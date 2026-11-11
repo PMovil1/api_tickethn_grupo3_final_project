@@ -39,10 +39,9 @@ api_tickethn_grupo3_final_project/
 
 ## Ejecutar en local
 
-Necesitas Go 1.26.3 o posterior y acceso a PostgreSQL en Supabase, a las siete tablas de autenticación y a un remitente habilitado en Resend. Ejecuta los comandos desde la carpeta de la API.
+Necesitas acceso a PostgreSQL en Supabase, a las siete tablas de autenticación y a un remitente habilitado en Resend. Ejecuta los comandos desde la carpeta de la API.
 
 ```sh
-go mod download
 test -f .env || cp .env.example .env
 ```
 
@@ -62,9 +61,25 @@ Puedes usar la conexión directa si tu red llega al host de Supabase. En una red
 
 Guarda las variables locales en `.env`. Las variables del sistema tienen prioridad. Supabase se utiliza como proveedor de PostgreSQL.
 
+### Ejecutar con Go
+
+Si `go version` indica que el comando no existe o muestra una versión anterior a **Go 1.26.3**, instala una versión compatible para tu sistema y arquitectura. Abre una terminal nueva y ejecuta `go version` para verificar la instalación. Si el comando sigue sin aparecer, comprueba que la carpeta `bin` de Go esté en tu `PATH`. [Instalación oficial de Go](https://go.dev/doc/install)
+
 ```sh
+go mod download
 go run ./cmd/api
 ```
+
+### Ejecutar con Docker sin instalar Go
+
+Con Docker en ejecución, usa el `Dockerfile` del repositorio. Para `docker run --env-file`, escribe los valores de `.env` como `CLAVE=valor`, sin comillas externas ni comentarios al final de la línea. Por ejemplo, `EMAIL_FROM=TicketHN <tickethn@kongrega.app>` si ese es tu remitente autorizado. [Variables de entorno en Docker](https://docs.docker.com/reference/cli/docker/container/run/#env)
+
+```sh
+docker build -t tickethn-api .
+docker run --rm --env-file .env -e PORT=8080 -p 127.0.0.1:8080:8080 tickethn-api
+```
+
+Para desplegar desde GitHub, Cloud Build compila la imagen con el `Dockerfile`. Puedes seguir la [guía de Cloud Run](#desplegar-en-cloud-run-desde-github) sin instalar Go en tu equipo.
 
 El servidor empieza a escuchar después de un `Ping` inicial a PostgreSQL. Si la comprobación falla, el proceso termina con un error. Usa `Ctrl+C` para iniciar el apagado ordenado.
 
