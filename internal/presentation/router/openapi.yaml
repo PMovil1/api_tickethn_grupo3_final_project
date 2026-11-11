@@ -1,0 +1,397 @@
+openapi: 3.0.3
+info:
+  title: TicketHN API
+  version: 1.0.0
+  description: API universitaria de boletos digitales. Incluye autenticación, sesiones y estado de PostgreSQL.
+servers:
+  - url: /
+    description: Mismo servidor que publica esta especificación
+  - url: http://localhost:8080
+    description: Desarrollo local
+tags:
+  - name: Estado
+  - name: Autenticación
+  - name: Sesiones
+paths:
+  /api/health:
+    get:
+      operationId: health
+      tags: [Estado]
+      summary: Comprobar la conexión a PostgreSQL
+      responses:
+        '200':
+          description: PostgreSQL respondió al Ping
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Health'}
+              example: {status: healthy, service: TicketHN API, database: connected}
+        '503':
+          description: PostgreSQL no está disponible
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Health'}
+              example: {status: unhealthy, service: TicketHN API, database: disconnected}
+  /api/auth/register:
+    post:
+      operationId: register
+      tags: [Autenticación]
+      summary: Crear cuenta pendiente de verificación
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/Register'}
+      responses:
+        '201':
+          description: Cuenta creada y envío solicitado
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Message'}
+              example: {message: Cuenta creada. Revisa tu correo para verificarla}
+        '400': {$ref: '#/components/responses/BadRequest'}
+        '409': {$ref: '#/components/responses/Conflict'}
+        '429': {$ref: '#/components/responses/RateLimited'}
+        '500': {$ref: '#/components/responses/Internal'}
+        '503': {$ref: '#/components/responses/Unavailable'}
+  /api/auth/verify-email:
+    post:
+      operationId: verifyEmail
+      tags: [Autenticación]
+      summary: Verificar correo con un código de un solo uso
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/VerifyCode'}
+      responses:
+        '200': {$ref: '#/components/responses/Message'}
+        '400': {$ref: '#/components/responses/BadRequest'}
+        '429': {$ref: '#/components/responses/RateLimited'}
+        '500': {$ref: '#/components/responses/Internal'}
+        '503': {$ref: '#/components/responses/Unavailable'}
+  /api/auth/resend-verification:
+    post:
+      operationId: resendVerification
+      tags: [Autenticación]
+      summary: Solicitar otro código de verificación
+      requestBody: {$ref: '#/components/requestBodies/Email'}
+      responses:
+        '200': {$ref: '#/components/responses/EmailRequested'}
+        '400': {$ref: '#/components/responses/BadRequest'}
+        '429': {$ref: '#/components/responses/RateLimited'}
+        '500': {$ref: '#/components/responses/Internal'}
+        '503': {$ref: '#/components/responses/Unavailable'}
+  /api/auth/login:
+    post:
+      operationId: login
+      tags: [Autenticación]
+      summary: Iniciar sesión y obtener tokens
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/Login'}
+      responses:
+        '200': {$ref: '#/components/responses/Tokens'}
+        '400': {$ref: '#/components/responses/BadRequest'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '429': {$ref: '#/components/responses/RateLimited'}
+        '500': {$ref: '#/components/responses/Internal'}
+        '503': {$ref: '#/components/responses/Unavailable'}
+  /api/auth/refresh:
+    post:
+      operationId: refresh
+      tags: [Sesiones]
+      summary: Rotar el refresh token y emitir un JWT nuevo
+      description: El refresh token anterior pierde validez. Conserva el nuevo refresh token.
+      requestBody: {$ref: '#/components/requestBodies/Refresh'}
+      responses:
+        '200': {$ref: '#/components/responses/Tokens'}
+        '400': {$ref: '#/components/responses/BadRequest'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '500': {$ref: '#/components/responses/Internal'}
+        '503': {$ref: '#/components/responses/Unavailable'}
+  /api/auth/logout:
+    post:
+      operationId: logout
+      tags: [Sesiones]
+      summary: Cerrar la sesión asociada a un refresh token propio
+      description: El access token emitido puede seguir siendo válido hasta que expire.
+      security: [{BearerAuth: []}]
+      requestBody: {$ref: '#/components/requestBodies/Refresh'}
+      responses:
+        '200': {$ref: '#/components/responses/Message'}
+        '400': {$ref: '#/components/responses/BadRequest'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '500': {$ref: '#/components/responses/Internal'}
+        '503': {$ref: '#/components/responses/Unavailable'}
+  /api/auth/forgot-password:
+    post:
+      operationId: forgotPassword
+      tags: [Autenticación]
+      summary: Solicitar un código de recuperación de contraseña
+      requestBody: {$ref: '#/components/requestBodies/Email'}
+      responses:
+        '200': {$ref: '#/components/responses/EmailRequested'}
+        '400': {$ref: '#/components/responses/BadRequest'}
+        '429': {$ref: '#/components/responses/RateLimited'}
+        '500': {$ref: '#/components/responses/Internal'}
+        '503': {$ref: '#/components/responses/Unavailable'}
+  /api/auth/reset-password:
+    post:
+      operationId: resetPassword
+      tags: [Autenticación]
+      summary: Restablecer contraseña y revocar las sesiones
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/ResetPassword'}
+      responses:
+        '200': {$ref: '#/components/responses/Message'}
+        '400': {$ref: '#/components/responses/BadRequest'}
+        '429': {$ref: '#/components/responses/RateLimited'}
+        '500': {$ref: '#/components/responses/Internal'}
+        '503': {$ref: '#/components/responses/Unavailable'}
+  /api/auth/me:
+    get:
+      operationId: me
+      tags: [Autenticación]
+      summary: Consultar el usuario autenticado
+      security: [{BearerAuth: []}]
+      responses:
+        '200':
+          description: Perfil del usuario
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Profile'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '500': {$ref: '#/components/responses/Internal'}
+        '503': {$ref: '#/components/responses/Unavailable'}
+  /api/auth/sessions:
+    get:
+      operationId: sessions
+      tags: [Sesiones]
+      summary: Listar sesiones propias
+      security: [{BearerAuth: []}]
+      responses:
+        '200':
+          description: Sesiones propias ordenadas por fecha de creación descendente
+          content:
+            application/json:
+              schema:
+                type: array
+                items: {$ref: '#/components/schemas/Session'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '500': {$ref: '#/components/responses/Internal'}
+        '503': {$ref: '#/components/responses/Unavailable'}
+  /api/auth/sessions/{id}:
+    delete:
+      operationId: revokeSession
+      tags: [Sesiones]
+      summary: Revocar una sesión propia por su UUID
+      security: [{BearerAuth: []}]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: {type: string, format: uuid}
+      responses:
+        '200': {$ref: '#/components/responses/Message'}
+        '400': {$ref: '#/components/responses/BadRequest'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '404': {$ref: '#/components/responses/NotFound'}
+        '500': {$ref: '#/components/responses/Internal'}
+        '503': {$ref: '#/components/responses/Unavailable'}
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+  requestBodies:
+    Email:
+      required: true
+      content:
+        application/json:
+          schema: {$ref: '#/components/schemas/Email'}
+    Refresh:
+      required: true
+      content:
+        application/json:
+          schema: {$ref: '#/components/schemas/Refresh'}
+  schemas:
+    Health:
+      type: object
+      required: [status, service, database]
+      properties:
+        status: {type: string, enum: [healthy, unhealthy]}
+        service: {type: string, example: TicketHN API}
+        database: {type: string, enum: [connected, disconnected]}
+    Email:
+      type: object
+      additionalProperties: false
+      required: [email]
+      properties:
+        email: {type: string, format: email, maxLength: 255, example: juan@example.com}
+    Login:
+      type: object
+      additionalProperties: false
+      required: [email, password]
+      properties:
+        email: {type: string, format: email, maxLength: 255, example: juan@example.com}
+        password: {type: string, format: password, example: Password123!}
+    Register:
+      type: object
+      additionalProperties: false
+      required: [full_name, email, password]
+      properties:
+        full_name: {type: string, maxLength: 150, example: Juan Pérez}
+        email: {type: string, format: email, maxLength: 255, example: juan@example.com}
+        password:
+          type: string
+          format: password
+          minLength: 12
+          description: Máximo 72 bytes codificados en UTF-8.
+          example: Password123!
+    VerifyCode:
+      type: object
+      additionalProperties: false
+      required: [email, code]
+      properties:
+        email: {type: string, format: email, maxLength: 255, example: juan@example.com}
+        code: {type: string, pattern: '^[0-9]{6}$', example: '012345'}
+    ResetPassword:
+      type: object
+      additionalProperties: false
+      required: [email, code, new_password]
+      properties:
+        email: {type: string, format: email, maxLength: 255, example: juan@example.com}
+        code: {type: string, pattern: '^[0-9]{6}$', example: '012345'}
+        new_password:
+          type: string
+          format: password
+          minLength: 12
+          description: Máximo 72 bytes codificados en UTF-8.
+          example: NewPassword123!
+    Refresh:
+      type: object
+      additionalProperties: false
+      required: [refresh_token]
+      properties:
+        refresh_token: {type: string, minLength: 43, maxLength: 43}
+    User:
+      type: object
+      required: [id, full_name, email, roles]
+      properties:
+        id: {type: string, format: uuid}
+        full_name: {type: string, example: Juan Pérez}
+        email: {type: string, format: email, example: juan@example.com}
+        roles:
+          type: array
+          items: {type: string, enum: [COMPRADOR, ORGANIZADOR, VALIDADOR, ADMIN]}
+          example: [COMPRADOR]
+    Profile:
+      allOf:
+        - $ref: '#/components/schemas/User'
+        - type: object
+          required: [email_verified, created_at]
+          properties:
+            email_verified: {type: boolean, example: true}
+            created_at: {type: string, format: date-time}
+    Tokens:
+      type: object
+      required: [access_token, refresh_token, token_type, expires_in, user]
+      properties:
+        access_token: {type: string, description: Access token JWT firmado}
+        refresh_token: {type: string, description: Token opaco de un solo uso para renovación}
+        token_type: {type: string, enum: [Bearer]}
+        expires_in: {type: integer, description: Vigencia del access token en segundos, example: 1800}
+        user: {$ref: '#/components/schemas/User'}
+    Session:
+      type: object
+      required: [id, created_at, last_used_at, expires_at, status]
+      properties:
+        id: {type: string, format: uuid}
+        created_at: {type: string, format: date-time}
+        last_used_at: {type: string, format: date-time, nullable: true}
+        expires_at: {type: string, format: date-time}
+        status: {type: string, enum: [active, revoked, expired]}
+        ip_address: {type: string, example: 127.0.0.1}
+        user_agent: {type: string, example: PostmanRuntime}
+    Message:
+      type: object
+      required: [message]
+      properties:
+        message: {type: string}
+    Error:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: object
+          required: [code, message]
+          properties:
+            code: {type: string, example: INVALID_CREDENTIALS}
+            message: {type: string, example: Credenciales inválidas}
+  responses:
+    Message:
+      description: Operación realizada
+      content:
+        application/json:
+          schema: {$ref: '#/components/schemas/Message'}
+    EmailRequested:
+      description: Respuesta genérica de solicitud de correo
+      content:
+        application/json:
+          schema: {$ref: '#/components/schemas/Message'}
+          example: {message: 'Si la cuenta cumple los requisitos, recibirás un correo con instrucciones'}
+    Tokens:
+      description: Tokens emitidos
+      content:
+        application/json:
+          schema: {$ref: '#/components/schemas/Tokens'}
+    BadRequest:
+      description: Petición inválida o código inválido, consumido o vencido
+      content:
+        application/json:
+          schema: {$ref: '#/components/schemas/Error'}
+    Unauthorized:
+      description: Credenciales o token inválidos
+      content:
+        application/json:
+          schema: {$ref: '#/components/schemas/Error'}
+    Forbidden:
+      description: El usuario autenticado carece de los roles requeridos
+      content:
+        application/json:
+          schema: {$ref: '#/components/schemas/Error'}
+    Conflict:
+      description: Correo ya registrado
+      content:
+        application/json:
+          schema: {$ref: '#/components/schemas/Error'}
+    NotFound:
+      description: Sesión no encontrada entre las sesiones propias
+      content:
+        application/json:
+          schema: {$ref: '#/components/schemas/Error'}
+    RateLimited:
+      description: Demasiados intentos
+      headers:
+        Retry-After:
+          schema: {type: integer}
+          description: Segundos antes de volver a intentar
+      content:
+        application/json:
+          schema: {$ref: '#/components/schemas/Error'}
+    Internal:
+      description: Error interno
+      content:
+        application/json:
+          schema: {$ref: '#/components/schemas/Error'}
+    Unavailable:
+      description: El tiempo de espera del servicio se agotó
+      content:
+        application/json:
+          schema: {$ref: '#/components/schemas/Error'}
