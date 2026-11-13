@@ -2,7 +2,7 @@ openapi: 3.0.3
 info:
   title: TicketHN API
   version: 1.0.0
-  description: API universitaria de boletos digitales. Incluye autenticación, sesiones y estado de PostgreSQL.
+  description: API universitaria de boletos digitales. Incluye autenticación, eventos, cartelera y compras simuladas.
 servers:
   - url: /
     description: Mismo servidor que publica esta especificación
@@ -13,6 +13,8 @@ tags:
   - name: Autenticación
   - name: Sesiones
   - name: Administración
+  - name: Eventos
+  - name: Boletos
 paths:
   /api/health:
     get:
@@ -261,7 +263,368 @@ paths:
         '404': {$ref: '#/components/responses/UserRoleNotFound'}
         '500': {$ref: '#/components/responses/Internal'}
         '503': {$ref: '#/components/responses/Unavailable'}
+  /api/organizer/events:
+    get:
+      operationId: ownedEvents
+      tags: [Eventos]
+      summary: Listar eventos propios, incluidos borradores
+      description: Requiere el rol ORGANIZADOR.
+      security: [{BearerAuth: []}]
+      parameters:
+        - {$ref: '#/components/parameters/EventLimit'}
+        - {$ref: '#/components/parameters/EventOffset'}
+      responses:
+        '200':
+          description: Operación realizada
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/EventList'}
+        '400': {$ref: '#/components/responses/EventBadRequest'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '500': {$ref: '#/components/responses/Internal'}
+        '503': {$ref: '#/components/responses/EventUnavailable'}
+    post:
+      operationId: createEvent
+      tags: [Eventos]
+      summary: Crear un borrador con afiche opcional
+      description: |
+        Requiere el rol ORGANIZADOR.
+
+        Configura un bucket público de Supabase Storage para JPEG, PNG y WebP con un límite de 5 MiB por objeto.
+        La lectura por URL incluye afiches de borradores. Reserva la escritura y el borrado al backend.
+        Configura SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY y, si usas otro nombre, SUPABASE_EVENT_COVERS_BUCKET.
+        El nombre predeterminado es event-covers.
+
+        ```sh
+        curl -i http://localhost:8080/api/organizer/events \
+          -H "Authorization: Bearer $ORGANIZER_TOKEN" \
+          -F 'title=Concierto de TicketHN' \
+          -F 'cover=@afiche.jpg'
+        ```
+      security: [{BearerAuth: []}]
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema: {$ref: '#/components/schemas/DraftMultipart'}
+      responses:
+        '201':
+          description: Recurso creado
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Event'}
+        '400': {$ref: '#/components/responses/EventBadRequest'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '413': {$ref: '#/components/responses/EventTooLarge'}
+        '415': {$ref: '#/components/responses/InvalidCover'}
+        '500': {$ref: '#/components/responses/Internal'}
+        '503': {$ref: '#/components/responses/EventUnavailable'}
+  /api/organizer/events/{id}:
+    get:
+      operationId: ownedEvent
+      tags: [Eventos]
+      summary: Consultar un evento propio
+      description: Requiere el rol ORGANIZADOR.
+      security: [{BearerAuth: []}]
+      parameters:
+        - {$ref: '#/components/parameters/EventID'}
+      responses:
+        '200':
+          description: Operación realizada
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Event'}
+        '400': {$ref: '#/components/responses/EventBadRequest'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '404': {$ref: '#/components/responses/EventNotFound'}
+        '500': {$ref: '#/components/responses/Internal'}
+        '503': {$ref: '#/components/responses/EventUnavailable'}
+    patch:
+      operationId: editEvent
+      tags: [Eventos]
+      summary: Editar parcialmente un evento propio
+      description: Requiere el rol ORGANIZADOR.
+      security: [{BearerAuth: []}]
+      parameters:
+        - {$ref: '#/components/parameters/EventID'}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/EventPatch'}
+      responses:
+        '200':
+          description: Operación realizada
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Event'}
+        '400': {$ref: '#/components/responses/EventBadRequest'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '404': {$ref: '#/components/responses/EventNotFound'}
+        '409': {$ref: '#/components/responses/EventConflict'}
+        '413': {$ref: '#/components/responses/EventTooLarge'}
+        '500': {$ref: '#/components/responses/Internal'}
+        '503': {$ref: '#/components/responses/EventUnavailable'}
+  /api/organizer/events/{id}/cover:
+    put:
+      operationId: replaceEventCover
+      tags: [Eventos]
+      summary: Reemplazar el afiche de un evento propio
+      description: Requiere el rol ORGANIZADOR.
+      security: [{BearerAuth: []}]
+      parameters:
+        - {$ref: '#/components/parameters/EventID'}
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema: {$ref: '#/components/schemas/CoverMultipart'}
+      responses:
+        '200':
+          description: Operación realizada
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Event'}
+        '400': {$ref: '#/components/responses/EventBadRequest'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '404': {$ref: '#/components/responses/EventNotFound'}
+        '413': {$ref: '#/components/responses/EventTooLarge'}
+        '415': {$ref: '#/components/responses/InvalidCover'}
+        '500': {$ref: '#/components/responses/Internal'}
+        '503': {$ref: '#/components/responses/EventUnavailable'}
+  /api/organizer/events/{id}/publish:
+    post:
+      operationId: publishEvent
+      tags: [Eventos]
+      summary: Publicar un borrador completo con una localidad activa e inicio futuro
+      description: Requiere el rol ORGANIZADOR.
+      security: [{BearerAuth: []}]
+      parameters:
+        - {$ref: '#/components/parameters/EventID'}
+      responses:
+        '200':
+          description: Operación realizada
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Event'}
+        '400': {$ref: '#/components/responses/EventBadRequest'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '404': {$ref: '#/components/responses/EventNotFound'}
+        '409': {$ref: '#/components/responses/EventConflict'}
+        '500': {$ref: '#/components/responses/Internal'}
+        '503': {$ref: '#/components/responses/EventUnavailable'}
+  /api/organizer/events/{id}/ticket-types:
+    post:
+      operationId: createTicketType
+      tags: [Eventos]
+      summary: Crear una localidad en HNL
+      description: Requiere el rol ORGANIZADOR.
+      security: [{BearerAuth: []}]
+      parameters:
+        - {$ref: '#/components/parameters/EventID'}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/LocalityCreate'}
+      responses:
+        '201':
+          description: Recurso creado
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Locality'}
+        '400': {$ref: '#/components/responses/EventBadRequest'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '404': {$ref: '#/components/responses/EventNotFound'}
+        '413': {$ref: '#/components/responses/EventTooLarge'}
+        '500': {$ref: '#/components/responses/Internal'}
+        '503': {$ref: '#/components/responses/EventUnavailable'}
+  /api/organizer/events/{id}/ticket-types/{ticketTypeId}:
+    patch:
+      operationId: editTicketType
+      tags: [Eventos]
+      summary: Editar una localidad sin reducir su capacidad por debajo de lo vendido
+      description: Requiere el rol ORGANIZADOR.
+      security: [{BearerAuth: []}]
+      parameters:
+        - {$ref: '#/components/parameters/EventID'}
+        - {$ref: '#/components/parameters/LocalityID'}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/LocalityPatch'}
+      responses:
+        '200':
+          description: Operación realizada
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Locality'}
+        '400': {$ref: '#/components/responses/EventBadRequest'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '404': {$ref: '#/components/responses/EventNotFound'}
+        '409': {$ref: '#/components/responses/EventConflict'}
+        '413': {$ref: '#/components/responses/EventTooLarge'}
+        '500': {$ref: '#/components/responses/Internal'}
+        '503': {$ref: '#/components/responses/EventUnavailable'}
+  /api/events:
+    get:
+      operationId: publicEvents
+      tags: [Eventos]
+      summary: Listar eventos publicados y próximos en orden de inicio e ID
+      parameters:
+        - {$ref: '#/components/parameters/EventLimit'}
+        - {$ref: '#/components/parameters/EventOffset'}
+      responses:
+        '200':
+          description: Operación realizada
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/EventList'}
+        '400': {$ref: '#/components/responses/EventBadRequest'}
+        '500': {$ref: '#/components/responses/Internal'}
+        '503': {$ref: '#/components/responses/EventUnavailable'}
+  /api/events/{id}:
+    get:
+      operationId: publicEvent
+      tags: [Eventos]
+      summary: Consultar un evento publicado y próximo
+      parameters:
+        - {$ref: '#/components/parameters/EventID'}
+      responses:
+        '200':
+          description: Operación realizada
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Event'}
+        '400': {$ref: '#/components/responses/EventBadRequest'}
+        '404': {$ref: '#/components/responses/EventNotFound'}
+        '500': {$ref: '#/components/responses/Internal'}
+        '503': {$ref: '#/components/responses/EventUnavailable'}
+  /api/orders:
+    post:
+      operationId: buyTickets
+      tags: [Boletos]
+      summary: Comprar hasta 20 entradas en una orden simulada
+      description: Requiere el rol COMPRADOR.
+      security: [{BearerAuth: []}]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/OrderCreate'}
+      responses:
+        '201':
+          description: Recurso creado
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/OrderCreated'}
+        '400': {$ref: '#/components/responses/EventBadRequest'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '404': {$ref: '#/components/responses/EventNotFound'}
+        '409': {$ref: '#/components/responses/EventConflict'}
+        '413': {$ref: '#/components/responses/EventTooLarge'}
+        '500': {$ref: '#/components/responses/Internal'}
+        '503': {$ref: '#/components/responses/EventUnavailable'}
+    get:
+      operationId: buyerOrders
+      tags: [Boletos]
+      summary: Listar órdenes propias
+      description: Requiere el rol COMPRADOR.
+      security: [{BearerAuth: []}]
+      parameters:
+        - {$ref: '#/components/parameters/EventLimit'}
+        - {$ref: '#/components/parameters/EventOffset'}
+      responses:
+        '200':
+          description: Operación realizada
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/OrderList'}
+        '400': {$ref: '#/components/responses/EventBadRequest'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '500': {$ref: '#/components/responses/Internal'}
+        '503': {$ref: '#/components/responses/EventUnavailable'}
+  /api/tickets:
+    get:
+      operationId: buyerTickets
+      tags: [Boletos]
+      summary: Listar boletos propios
+      description: Requiere el rol COMPRADOR.
+      security: [{BearerAuth: []}]
+      parameters:
+        - {$ref: '#/components/parameters/EventLimit'}
+        - {$ref: '#/components/parameters/EventOffset'}
+      responses:
+        '200':
+          description: Operación realizada
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/TicketList'}
+        '400': {$ref: '#/components/responses/EventBadRequest'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '500': {$ref: '#/components/responses/Internal'}
+        '503': {$ref: '#/components/responses/EventUnavailable'}
+  /api/tickets/{id}:
+    get:
+      operationId: buyerTicket
+      tags: [Boletos]
+      summary: Consultar un boleto propio y obtener su QR firmado
+      description: Requiere el rol COMPRADOR. Configura TICKET_QR_SECRET con al menos 32 bytes aleatorios independientes de JWT_SECRET.
+      security: [{BearerAuth: []}]
+      parameters:
+        - {$ref: '#/components/parameters/TicketID'}
+      responses:
+        '200':
+          description: Operación realizada
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/TicketDetail'}
+        '400': {$ref: '#/components/responses/EventBadRequest'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '404': {$ref: '#/components/responses/EventNotFound'}
+        '500': {$ref: '#/components/responses/Internal'}
+        '503': {$ref: '#/components/responses/EventUnavailable'}
 components:
+  parameters:
+    EventID:
+      name: id
+      in: path
+      required: true
+      description: UUID del evento
+      schema: {type: string, format: uuid}
+    TicketID:
+      name: id
+      in: path
+      required: true
+      description: UUID del boleto
+      schema: {type: string, format: uuid}
+    LocalityID:
+      name: ticketTypeId
+      in: path
+      required: true
+      description: UUID de la localidad
+      schema: {type: string, format: uuid}
+    EventLimit:
+      name: limit
+      in: query
+      schema: {type: integer, minimum: 1, maximum: 100, default: 20}
+    EventOffset:
+      name: offset
+      in: query
+      schema: {type: integer, minimum: 0, maximum: 2147483647, default: 0}
   securitySchemes:
     BearerAuth:
       type: http
@@ -279,6 +642,159 @@ components:
         application/json:
           schema: {$ref: '#/components/schemas/Refresh'}
   schemas:
+    DraftMultipart:
+      type: object
+      description: Para coordenadas, envía ambos campos. El multipart completo admite 5 MiB más 64 KiB.
+      additionalProperties: false
+      required: [title]
+      properties:
+        title: {type: string, minLength: 1}
+        description: {type: string, nullable: true}
+        address: {type: string, nullable: true}
+        latitude: {type: number, nullable: true, minimum: -90, maximum: 90}
+        longitude: {type: number, nullable: true, minimum: -180, maximum: 180}
+        starts_at: {type: string, format: date-time, nullable: true, example: '2030-06-15T19:00:00-06:00'}
+        cover:
+          type: string
+          format: binary
+          description: JPEG, PNG o WebP de hasta 5 MiB, 4096 píxeles por lado y 12 millones de píxeles.
+    CoverMultipart:
+      type: object
+      additionalProperties: false
+      required: [cover]
+      properties:
+        cover:
+          type: string
+          format: binary
+          description: JPEG, PNG o WebP de hasta 5 MiB, 4096 píxeles por lado y 12 millones de píxeles.
+    EventPatch:
+      type: object
+      description: Los campos opcionales aceptan null. Envía ambas coordenadas si editas alguna. La fecha y la ubicación se bloquean al emitir el primer boleto.
+      additionalProperties: false
+      properties:
+        title: {type: string, minLength: 1}
+        description: {type: string, nullable: true}
+        address: {type: string, nullable: true}
+        latitude: {type: number, nullable: true, minimum: -90, maximum: 90}
+        longitude: {type: number, nullable: true, minimum: -180, maximum: 180}
+        starts_at: {type: string, format: date-time, nullable: true, example: '2030-06-15T19:00:00-06:00'}
+    Event:
+      type: object
+      required: [id, title, description, address, latitude, longitude, starts_at, cover_image_url, status, created_at]
+      properties:
+        id: {type: string, format: uuid}
+        organizer_id: {type: string, format: uuid, description: Incluido en rutas de organizador}
+        title: {type: string, minLength: 1}
+        description: {type: string, nullable: true}
+        address: {type: string, nullable: true}
+        latitude: {type: number, nullable: true, minimum: -90, maximum: 90}
+        longitude: {type: number, nullable: true, minimum: -180, maximum: 180}
+        starts_at: {type: string, format: date-time, nullable: true, example: '2030-06-15T19:00:00-06:00'}
+        cover_image_url: {type: string, format: uri, nullable: true}
+        status: {type: string, enum: [draft, published, cancelled]}
+        created_at: {type: string, format: date-time}
+        ticket_types:
+          description: Incluido en los listados y detalles de eventos. La cartelera incluye solo localidades activas.
+          type: array
+          items: {$ref: '#/components/schemas/Locality'}
+    EventList:
+      type: array
+      items: {$ref: '#/components/schemas/Event'}
+    LocalityCreate:
+      type: object
+      description: Precio en HNL. Por defecto la localidad se crea activa.
+      additionalProperties: false
+      required: [title, price, capacity]
+      properties:
+        title: {type: string, minLength: 1}
+        description: {type: string, nullable: true}
+        price: {type: number, minimum: 0, maximum: 9999999999.99, multipleOf: 0.01, example: 125.50}
+        capacity: {type: integer, minimum: 1, maximum: 2147483647}
+        is_active: {type: boolean}
+    LocalityPatch:
+      type: object
+      description: Precio en HNL. Un evento publicado debe conservar una localidad activa.
+      additionalProperties: false
+      properties:
+        title: {type: string, minLength: 1}
+        description: {type: string, nullable: true}
+        price: {type: number, minimum: 0, maximum: 9999999999.99, multipleOf: 0.01, example: 125.50}
+        capacity: {type: integer, minimum: 1, maximum: 2147483647}
+        is_active: {type: boolean}
+    Locality:
+      type: object
+      required: [id, event_id, title, description, price, is_active, available]
+      properties:
+        id: {type: string, format: uuid}
+        event_id: {type: string, format: uuid}
+        sold_count: {type: integer, minimum: 0, description: Incluido en rutas de organizador}
+        available: {type: integer, minimum: 0, description: Capacidad menos los boletos vendidos}
+        title: {type: string, minLength: 1}
+        description: {type: string, nullable: true}
+        price: {type: number, minimum: 0, maximum: 9999999999.99, multipleOf: 0.01, example: 125.50}
+        capacity: {type: integer, minimum: 1, maximum: 2147483647, description: Incluida en rutas de organizador}
+        is_active: {type: boolean}
+    OrderCreate:
+      type: object
+      description: Máximo de 20 entradas sumadas entre todas las localidades. Cada localidad aparece una sola vez.
+      additionalProperties: false
+      required: [event_id, items]
+      properties:
+        event_id: {type: string, format: uuid}
+        items:
+          type: array
+          minItems: 1
+          maxItems: 20
+          items:
+            type: object
+            additionalProperties: false
+            required: [ticket_type_id, quantity]
+            properties:
+              ticket_type_id: {type: string, format: uuid}
+              quantity: {type: integer, minimum: 1, maximum: 20}
+    Order:
+      type: object
+      required: [id, event_id, total, status, created_at]
+      properties:
+        id: {type: string, format: uuid}
+        event_id: {type: string, format: uuid}
+        total: {type: number, minimum: 0, multipleOf: 0.01, description: Total en HNL}
+        status: {type: string, enum: [confirmed, cancelled]}
+        created_at: {type: string, format: date-time}
+    OrderCreated:
+      allOf:
+        - {$ref: '#/components/schemas/Order'}
+        - type: object
+          required: [tickets]
+          properties:
+            tickets: {$ref: '#/components/schemas/TicketList'}
+    OrderList:
+      type: array
+      items: {$ref: '#/components/schemas/Order'}
+    Ticket:
+      type: object
+      required: [id, event_id, order_id, ticket_type_id, code, unit_price, created_at, used_at]
+      properties:
+        id: {type: string, format: uuid}
+        event_id: {type: string, format: uuid}
+        order_id: {type: string, format: uuid}
+        ticket_type_id: {type: string, format: uuid}
+        code: {type: string, description: Folio legible generado por PostgreSQL}
+        unit_price: {type: number, minimum: 0, multipleOf: 0.01, description: Precio pagado en HNL}
+        created_at: {type: string, format: date-time}
+        used_at: {type: string, format: date-time, nullable: true}
+    TicketList:
+      type: array
+      items: {$ref: '#/components/schemas/Ticket'}
+    TicketDetail:
+      allOf:
+        - {$ref: '#/components/schemas/Ticket'}
+        - type: object
+          required: [qr_payload]
+          properties:
+            qr_payload:
+              type: string
+              description: Identificadores firmados del boleto y su evento. Android puede guardar el contenido para mostrarlo sin conexión.
     Health:
       type: object
       required: [status, service, database]
@@ -393,6 +909,36 @@ components:
             code: {type: string, example: INVALID_CREDENTIALS}
             message: {type: string, example: Credenciales inválidas}
   responses:
+    EventBadRequest:
+      description: INVALID_INPUT por campos inválidos o desconocidos.
+      content:
+        application/json:
+          schema: {$ref: '#/components/schemas/Error'}
+    EventNotFound:
+      description: NOT_FOUND para recursos inexistentes, ajenos o fuera de la cartelera.
+      content:
+        application/json:
+          schema: {$ref: '#/components/schemas/Error'}
+    EventConflict:
+      description: EVENT_CONFLICT por el estado del evento o TICKET_STOCK por cupo insuficiente o localidad inactiva.
+      content:
+        application/json:
+          schema: {$ref: '#/components/schemas/Error'}
+    EventTooLarge:
+      description: BODY_TOO_LARGE por exceso de tamaño.
+      content:
+        application/json:
+          schema: {$ref: '#/components/schemas/Error'}
+    InvalidCover:
+      description: INVALID_COVER por formato, contenido o dimensiones inválidas.
+      content:
+        application/json:
+          schema: {$ref: '#/components/schemas/Error'}
+    EventUnavailable:
+      description: STORAGE_UNAVAILABLE si falla la subida de afiches o UNAVAILABLE si falta el firmante de QR o vence la petición.
+      content:
+        application/json:
+          schema: {$ref: '#/components/schemas/Error'}
     Message:
       description: Operación realizada
       content:

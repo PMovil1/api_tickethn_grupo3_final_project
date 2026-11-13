@@ -15,11 +15,13 @@ import (
 	"time"
 
 	"github.com/JoseGaldamez/api_tickethn_grupo3_final_project/internal/application/auth"
+	"github.com/JoseGaldamez/api_tickethn_grupo3_final_project/internal/application/events"
 	"github.com/JoseGaldamez/api_tickethn_grupo3_final_project/internal/application/health"
 	"github.com/JoseGaldamez/api_tickethn_grupo3_final_project/internal/infrastructure/config"
 	"github.com/JoseGaldamez/api_tickethn_grupo3_final_project/internal/infrastructure/database"
 	"github.com/JoseGaldamez/api_tickethn_grupo3_final_project/internal/infrastructure/email"
 	"github.com/JoseGaldamez/api_tickethn_grupo3_final_project/internal/infrastructure/security"
+	"github.com/JoseGaldamez/api_tickethn_grupo3_final_project/internal/infrastructure/storage"
 	"github.com/JoseGaldamez/api_tickethn_grupo3_final_project/internal/presentation/handlers"
 	"github.com/JoseGaldamez/api_tickethn_grupo3_final_project/internal/presentation/middleware"
 	"github.com/JoseGaldamez/api_tickethn_grupo3_final_project/internal/presentation/router"
@@ -45,6 +47,10 @@ func run(logger *slog.Logger) error {
 	if err != nil {
 		return err
 	}
+	eventConfig, err := config.LoadEvents(authConfig.JWTSecret)
+	if err != nil {
+		return err
+	}
 	pool, err := database.Open(ctx, cfg.DatabaseURL)
 	if err != nil {
 		return err
@@ -65,7 +71,18 @@ func run(logger *slog.Logger) error {
 	mailer := email.NewQueue(ctx, email.NewResend(authConfig.ResendKey, authConfig.EmailFrom), logger)
 	service := auth.New(database.NewAuthRepository(pool), passwords, tokens, mailer, logger, codeKey,
 		authConfig.AccessTTL, authConfig.RefreshTTL)
-	router.Auth(routes, handlers.NewAuth(service, logger), middleware.RequireJWT(service, logger))
+	requireJWT := middleware.RequireJWT(service, logger)
+	router.Auth(routes, handlers.NewAuth(service, logger), requireJWT)
+	var covers events.CoverStore
+	if eventConfig.StorageURL != "" {
+		covers = storage.NewCovers(eventConfig.StorageURL, eventConfig.StorageBucket, eventConfig.StorageKey)
+	}
+	var qr events.QRSigner
+	if len(eventConfig.QRKey) > 0 {
+		qr = security.NewTicketQR(eventConfig.QRKey)
+	}
+	eventService := events.New(database.NewEvents(pool), covers, qr, logger)
+	router.Events(routes, handlers.NewEvents(eventService, logger), requireJWT)
 	server := &http.Server{
 		Addr:              ":" + cfg.Port,
 		Handler:           routes,
