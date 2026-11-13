@@ -140,6 +140,18 @@ Con el servidor activo, importa `http://localhost:8080/api/openapi.yaml` en Post
 
 Si no llega el correo de verificación, espera al menos 60 segundos desde la última emisión y usa `POST /api/auth/resend-verification` con `email`. Revisa el estado de envío en Resend y los logs del servidor. Los envíos se procesan en una cola en memoria, por lo que un HTTP 201 o 200 confirma la operación de la API y la entrega se comprueba en Resend.
 
+## Administración de accesos
+
+Las rutas requieren `Authorization: Bearer <access_token>` de un usuario activo, verificado y con el rol `ADMIN`.
+
+| Método y ruta | Resultado |
+| --- | --- |
+| `GET /api/admin/users` | Devuelve los ID, nombres, correos y roles de todos los usuarios. |
+| `PUT /api/admin/users/{id}/roles/{role}` | Asigna el rol al usuario indicado y devuelve `204`. |
+| `DELETE /api/admin/users/{id}/roles/{role}` | Retira el rol del usuario indicado y devuelve `204`. |
+
+`id` es el UUID del usuario y `role` acepta `COMPRADOR`, `ORGANIZADOR`, `VALIDADOR` o `ADMIN`. Si aún no hay una cuenta con `ADMIN`, la primera asignación se hace en la tabla `public.user_roles` de Supabase, vinculando el ID de una cuenta activa y verificada con el ID del rol `ADMIN` de `public.roles`.
+
 ## Seguridad y sesiones
 
 - Las contraseñas nuevas requieren al menos 12 caracteres y un máximo de 72 bytes UTF-8. Los códigos de seis dígitos vencen en 10 minutos y solo se pueden consumir una vez.

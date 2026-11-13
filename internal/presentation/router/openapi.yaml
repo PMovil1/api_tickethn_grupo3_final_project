@@ -12,6 +12,7 @@ tags:
   - name: Estado
   - name: Autenticación
   - name: Sesiones
+  - name: Administración
 paths:
   /api/health:
     get:
@@ -203,6 +204,63 @@ paths:
         '404': {$ref: '#/components/responses/NotFound'}
         '500': {$ref: '#/components/responses/Internal'}
         '503': {$ref: '#/components/responses/Unavailable'}
+  /api/admin/users:
+    get:
+      operationId: listUsers
+      tags: [Administración]
+      summary: Listar todos los usuarios y sus roles
+      description: Requiere el rol ADMIN.
+      security: [{BearerAuth: []}]
+      responses:
+        '200':
+          description: Usuarios ordenados por nombre
+          content:
+            application/json:
+              schema:
+                type: array
+                items: {$ref: '#/components/schemas/User'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '500': {$ref: '#/components/responses/Internal'}
+        '503': {$ref: '#/components/responses/Unavailable'}
+  /api/admin/users/{id}/roles/{role}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema: {type: string, format: uuid}
+      - name: role
+        in: path
+        required: true
+        schema: {type: string, enum: [COMPRADOR, ORGANIZADOR, VALIDADOR, ADMIN]}
+    put:
+      operationId: assignUserRole
+      tags: [Administración]
+      summary: Asignar un rol al usuario indicado
+      description: Requiere el rol ADMIN. Repetir la asignación devuelve 204.
+      security: [{BearerAuth: []}]
+      responses:
+        '204': {description: Rol asignado}
+        '400': {$ref: '#/components/responses/BadRequest'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '404': {$ref: '#/components/responses/UserRoleNotFound'}
+        '500': {$ref: '#/components/responses/Internal'}
+        '503': {$ref: '#/components/responses/Unavailable'}
+    delete:
+      operationId: removeUserRole
+      tags: [Administración]
+      summary: Retirar un rol del usuario indicado
+      description: Requiere el rol ADMIN. Repetir la eliminación devuelve 204.
+      security: [{BearerAuth: []}]
+      responses:
+        '204': {description: Rol retirado}
+        '400': {$ref: '#/components/responses/BadRequest'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '404': {$ref: '#/components/responses/UserRoleNotFound'}
+        '500': {$ref: '#/components/responses/Internal'}
+        '503': {$ref: '#/components/responses/Unavailable'}
 components:
   securitySchemes:
     BearerAuth:
@@ -373,6 +431,11 @@ components:
           schema: {$ref: '#/components/schemas/Error'}
     NotFound:
       description: Sesión no encontrada entre las sesiones propias
+      content:
+        application/json:
+          schema: {$ref: '#/components/schemas/Error'}
+    UserRoleNotFound:
+      description: Usuario o rol no encontrado
       content:
         application/json:
           schema: {$ref: '#/components/schemas/Error'}

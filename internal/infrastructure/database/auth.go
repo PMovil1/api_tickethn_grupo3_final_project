@@ -19,10 +19,11 @@ func NewAuthRepository(pool *pgxpool.Pool) *AuthRepository {
 	return &AuthRepository{pool: pool}
 }
 
-const userFields = `
-	u.id::text, u.full_name, u.email, u.password_hash, u.is_active, u.email_verified_at, u.created_at,
-	ARRAY(SELECT r.code::text FROM public.user_roles ur JOIN public.roles r ON r.id = ur.role_id
+const userRoles = `ARRAY(SELECT r.code::text FROM public.user_roles ur JOIN public.roles r ON r.id = ur.role_id
 	      WHERE ur.user_id = u.id ORDER BY r.code)`
+
+const userFields = `
+	u.id::text, u.full_name, u.email, u.password_hash, u.is_active, u.email_verified_at, u.created_at, ` + userRoles
 
 func scanUser(row pgx.Row) (domain.User, error) {
 	var user domain.User
@@ -44,6 +45,49 @@ func (r *AuthRepository) UserByEmail(ctx context.Context, email string) (domain.
 
 func (r *AuthRepository) UserByID(ctx context.Context, id string) (domain.User, error) {
 	return scanUser(r.pool.QueryRow(ctx, `SELECT `+userFields+` FROM public.users u WHERE u.id = $1`, id))
+}
+
+func (r *AuthRepository) Users(ctx context.Context) ([]domain.User, error) {
+	rows, err := r.pool.Query(ctx, `SELECT u.id::text, u.full_name, u.email, `+userRoles+`
+		FROM public.users u ORDER BY lower(u.full_name), u.id`)
+	if err != nil {
+		return nil, err
+	}
+	return pgx.CollectRows(rows, func(row pgx.CollectableRow) (domain.User, error) {
+		var user domain.User
+		err := row.Scan(&user.ID, &user.FullName, &user.Email, &user.Roles)
+		return user, err
+	})
+}
+
+func (r *AuthRepository) SetUserRole(ctx context.Context, userID string, role domain.Role, assigned bool) error {
+	return pgx.BeginFunc(ctx, r.pool, func(tx pgx.Tx) error {
+		// Serialize changes to this user's role assignments and detect missing users.
+		var exists int
+		err := tx.QueryRow(ctx, `SELECT 1 FROM public.users WHERE id = $1 FOR UPDATE`, userID).Scan(&exists)
+		if errors.Is(err, pgx.ErrNoRows) {
+			return auth.ErrNotFound
+		}
+		if err != nil {
+			return err
+		}
+
+		const selectedRole = `WITH selected_role AS (SELECT id FROM public.roles WHERE code::text = $2), changed AS (`
+		mutation := `DELETE FROM public.user_roles USING selected_role
+			WHERE user_id = $1::uuid AND role_id = selected_role.id`
+		if assigned {
+			mutation = `INSERT INTO public.user_roles (user_id, role_id)
+				SELECT $1::uuid, id FROM selected_role
+				WHERE NOT EXISTS (SELECT 1 FROM public.user_roles WHERE user_id = $1::uuid AND role_id = selected_role.id)
+				ON CONFLICT DO NOTHING`
+		}
+		var roleExists bool
+		err = tx.QueryRow(ctx, selectedRole+mutation+`) SELECT EXISTS (SELECT 1 FROM selected_role)`, userID, role).Scan(&roleExists)
+		if err == nil && !roleExists {
+			return auth.ErrRoleNotFound
+		}
+		return err
+	})
 }
 
 func (r *AuthRepository) Register(ctx context.Context, user domain.User, codeHash string) error {

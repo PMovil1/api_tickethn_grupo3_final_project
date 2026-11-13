@@ -220,6 +220,22 @@ func (s *Service) Sessions(ctx context.Context, userID string) ([]domain.Session
 	return s.repo.Sessions(ctx, userID)
 }
 
+func (s *Service) Users(ctx context.Context) ([]domain.User, error) {
+	return s.repo.Users(ctx)
+}
+
+func (s *Service) SetUserRole(ctx context.Context, userID string, role domain.Role, assigned bool) error {
+	if !validUUID(userID) {
+		return ErrInvalidInput
+	}
+	switch role {
+	case domain.Buyer, domain.Organizer, domain.Validator, domain.Admin:
+		return s.repo.SetUserRole(ctx, userID, role, assigned)
+	default:
+		return ErrInvalidInput
+	}
+}
+
 func (s *Service) RevokeSession(ctx context.Context, userID, sessionID string) error {
 	if !validUUID(sessionID) {
 		return ErrInvalidInput

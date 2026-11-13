@@ -193,6 +193,41 @@ func (h *Auth) Me(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+func (h *Auth) Users(w http.ResponseWriter, r *http.Request) {
+	users, err := h.service.Users(r.Context())
+	if err != nil {
+		h.fail(w, r, err)
+		return
+	}
+	result := make([]userSummary, 0, len(users))
+	for _, user := range users {
+		result = append(result, summary(user))
+	}
+	response.JSON(w, http.StatusOK, result)
+}
+
+func (h *Auth) AssignUserRole(w http.ResponseWriter, r *http.Request) {
+	h.setUserRole(w, r, true)
+}
+
+func (h *Auth) RemoveUserRole(w http.ResponseWriter, r *http.Request) {
+	h.setUserRole(w, r, false)
+}
+
+func (h *Auth) setUserRole(w http.ResponseWriter, r *http.Request, assigned bool) {
+	err := h.service.SetUserRole(r.Context(), chi.URLParam(r, "id"), domain.Role(chi.URLParam(r, "role")), assigned)
+	switch {
+	case err == nil:
+		w.WriteHeader(http.StatusNoContent)
+	case errors.Is(err, auth.ErrNotFound):
+		response.Error(w, http.StatusNotFound, "NOT_FOUND", "Usuario no encontrado")
+	case errors.Is(err, auth.ErrRoleNotFound):
+		response.Error(w, http.StatusNotFound, "NOT_FOUND", "Rol no encontrado")
+	default:
+		h.fail(w, r, err)
+	}
+}
+
 func (h *Auth) Sessions(w http.ResponseWriter, r *http.Request) {
 	user, _ := middleware.Identity(r.Context())
 	sessions, err := h.service.Sessions(r.Context(), user.ID)

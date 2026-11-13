@@ -15,12 +15,15 @@ var (
 	ErrInvalidCode  = errors.New("invalid or expired code")
 	ErrUnauthorized = errors.New("invalid authentication")
 	ErrNotFound     = errors.New("not found")
+	ErrRoleNotFound = errors.New("role not found")
 	ErrNotEligible  = errors.New("account or challenge unavailable")
 )
 
 type Repository interface {
 	UserByEmail(context.Context, string) (domain.User, error)
 	UserByID(context.Context, string) (domain.User, error)
+	Users(context.Context) ([]domain.User, error)
+	SetUserRole(ctx context.Context, userID string, role domain.Role, assigned bool) error
 	Register(ctx context.Context, user domain.User, codeHash string) error
 	IssueCode(ctx context.Context, email string, purpose domain.CodePurpose, codeHash string) (bool, error)
 	ConsumeCode(ctx context.Context, email string, purpose domain.CodePurpose, matches func(string) bool, passwordHash string) error

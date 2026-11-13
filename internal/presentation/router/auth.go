@@ -6,7 +6,9 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/JoseGaldamez/api_tickethn_grupo3_final_project/internal/domain"
 	"github.com/JoseGaldamez/api_tickethn_grupo3_final_project/internal/presentation/handlers"
+	"github.com/JoseGaldamez/api_tickethn_grupo3_final_project/internal/presentation/middleware"
 	"github.com/JoseGaldamez/api_tickethn_grupo3_final_project/internal/presentation/response"
 	"github.com/go-chi/chi/v5"
 )
@@ -38,6 +40,12 @@ func Auth(routes chi.Router, h *handlers.Auth, requireJWT func(http.Handler) htt
 			protected.Get("/sessions", h.Sessions)
 			protected.Delete("/sessions/{id}", h.RevokeSession)
 		})
+	})
+	routes.Route("/api/admin/users", func(admin chi.Router) {
+		admin.Use(authTimeout, requireJWT, middleware.RequireRoles(domain.Admin))
+		admin.Get("/", h.Users)
+		admin.Put("/{id}/roles/{role}", h.AssignUserRole)
+		admin.Delete("/{id}/roles/{role}", h.RemoveUserRole)
 	})
 }
 
