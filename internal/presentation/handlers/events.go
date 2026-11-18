@@ -61,15 +61,22 @@ type orderResponse struct {
 }
 
 type ticketResponse struct {
-	ID           string     `json:"id"`
-	EventID      string     `json:"event_id"`
-	OrderID      string     `json:"order_id"`
-	TicketTypeID string     `json:"ticket_type_id"`
-	Code         string     `json:"code"`
-	UnitPrice    cents      `json:"unit_price"`
-	CreatedAt    time.Time  `json:"created_at"`
-	UsedAt       *time.Time `json:"used_at"`
-	QR           string     `json:"qr_payload,omitempty"`
+	ID              string     `json:"id"`
+	EventID         string     `json:"event_id"`
+	OrderID         string     `json:"order_id"`
+	TicketTypeID    string     `json:"ticket_type_id"`
+	Code            string     `json:"code"`
+	UnitPrice       cents      `json:"unit_price"`
+	CreatedAt       time.Time  `json:"created_at"`
+	UsedAt          *time.Time `json:"used_at"`
+	QR              string     `json:"qr_payload,omitempty"`
+	EventTitle      string     `json:"event_title,omitempty"`
+	EventAddress    *string    `json:"event_address,omitempty"`
+	EventStartsAt   *time.Time `json:"event_starts_at,omitempty"`
+	EventCoverURL   *string    `json:"event_cover_image_url,omitempty"`
+	EventStatus     string     `json:"event_status,omitempty"`
+	TicketTypeTitle string     `json:"ticket_type_title,omitempty"`
+	OrderStatus     string     `json:"order_status,omitempty"`
 }
 
 func eventView(e domain.Event, public, includeTypes bool) eventResponse {
@@ -105,7 +112,10 @@ func orderView(o domain.Order) orderResponse {
 
 func ticketView(t domain.Ticket) ticketResponse {
 	return ticketResponse{ID: t.ID, EventID: t.EventID, OrderID: t.OrderID, TicketTypeID: t.TicketTypeID,
-		Code: t.Code, UnitPrice: cents(t.UnitPriceCents), CreatedAt: t.CreatedAt, UsedAt: t.UsedAt}
+		Code: t.Code, UnitPrice: cents(t.UnitPriceCents), CreatedAt: t.CreatedAt, UsedAt: t.UsedAt,
+		EventTitle: t.EventTitle, EventAddress: t.EventAddress, EventStartsAt: t.EventStartsAt,
+		EventCoverURL: t.EventCoverURL, EventStatus: t.EventStatus,
+		TicketTypeTitle: t.TicketTypeTitle, OrderStatus: t.OrderStatus}
 }
 
 func ticketViews(tickets []domain.Ticket) []ticketResponse {

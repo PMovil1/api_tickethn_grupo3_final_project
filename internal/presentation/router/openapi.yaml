@@ -783,6 +783,13 @@ components:
         unit_price: {type: number, minimum: 0, multipleOf: 0.01, description: Precio pagado en HNL}
         created_at: {type: string, format: date-time}
         used_at: {type: string, format: date-time, nullable: true}
+        event_title: {type: string, description: Incluido al consultar boletos propios}
+        event_address: {type: string}
+        event_starts_at: {type: string, format: date-time}
+        event_cover_image_url: {type: string, format: uri}
+        event_status: {type: string, enum: [draft, published, cancelled]}
+        ticket_type_title: {type: string}
+        order_status: {type: string, enum: [confirmed, cancelled]}
     TicketList:
       type: array
       items: {$ref: '#/components/schemas/Ticket'}

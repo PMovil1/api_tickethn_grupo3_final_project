@@ -23,6 +23,14 @@ const typeColumns = `id::text, event_id::text, title, description,
 const orderColumns = `id::text, event_id::text, (total * 100)::bigint, status, created_at`
 const ticketColumns = `id::text, event_id::text, order_id::text, ticket_type_id::text,
 	code, (unit_price * 100)::bigint, created_at, used_at`
+const ownedTicketQuery = `SELECT t.id::text, t.event_id::text, t.order_id::text, t.ticket_type_id::text,
+	t.code, (t.unit_price * 100)::bigint, t.created_at, t.used_at,
+	e.title, e.address, e.starts_at, e.cover_image_url, e.status, tt.title, o.status
+	FROM public.tickets AS t
+	JOIN public.orders AS o ON o.id = t.order_id
+	JOIN public.events AS e ON e.id = t.event_id
+	JOIN public.ticket_types AS tt ON tt.id = t.ticket_type_id
+	WHERE o.buyer_id = $1`
 
 type rowScanner interface{ Scan(...any) error }
 
@@ -53,8 +61,21 @@ func scanOrder(row rowScanner) (domain.Order, error) {
 }
 
 func scanTicket(row rowScanner) (domain.Ticket, error) {
+	return readTicket(row, false)
+}
+
+func scanOwnedTicket(row rowScanner) (domain.Ticket, error) {
+	return readTicket(row, true)
+}
+
+func readTicket(row rowScanner, owned bool) (domain.Ticket, error) {
 	var t domain.Ticket
-	err := row.Scan(&t.ID, &t.EventID, &t.OrderID, &t.TicketTypeID, &t.Code, &t.UnitPriceCents, &t.CreatedAt, &t.UsedAt)
+	fields := []any{&t.ID, &t.EventID, &t.OrderID, &t.TicketTypeID, &t.Code, &t.UnitPriceCents, &t.CreatedAt, &t.UsedAt}
+	if owned {
+		fields = append(fields, &t.EventTitle, &t.EventAddress, &t.EventStartsAt,
+			&t.EventCoverURL, &t.EventStatus, &t.TicketTypeTitle, &t.OrderStatus)
+	}
+	err := row.Scan(fields...)
 	return t, notFound(err)
 }
 
@@ -257,13 +278,11 @@ func (r *Events) Orders(ctx context.Context, buyer string, page events.Page) ([]
 }
 
 func (r *Events) Tickets(ctx context.Context, buyer string, page events.Page) ([]domain.Ticket, error) {
-	rows, err := r.pool.Query(ctx, `SELECT `+ticketColumns+` FROM public.tickets
-		WHERE order_id IN (SELECT id FROM public.orders WHERE buyer_id=$1)
-		ORDER BY created_at DESC,id DESC LIMIT $2 OFFSET $3`, buyer, page.Limit, page.Offset)
-	return collect(rows, err, scanTicket)
+	rows, err := r.pool.Query(ctx, ownedTicketQuery+` ORDER BY t.created_at DESC,t.id DESC LIMIT $2 OFFSET $3`,
+		buyer, page.Limit, page.Offset)
+	return collect(rows, err, scanOwnedTicket)
 }
 
 func (r *Events) Ticket(ctx context.Context, buyer, id string) (domain.Ticket, error) {
-	return scanTicket(r.pool.QueryRow(ctx, `SELECT `+ticketColumns+` FROM public.tickets
-		WHERE id=$1 AND order_id IN (SELECT id FROM public.orders WHERE buyer_id=$2)`, id, buyer))
+	return scanOwnedTicket(r.pool.QueryRow(ctx, ownedTicketQuery+` AND t.id = $2`, buyer, id))
 }

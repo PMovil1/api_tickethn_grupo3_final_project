@@ -181,8 +181,13 @@ func TestEventsPostgres(t *testing.T) {
 				if ticket.UnitPriceCents != 3729 || ticket.Code == "" {
 					t.Fatalf("unexpected ticket: %+v", ticket)
 				}
-				if _, err := repo.Ticket(ctx, buyer, ticket.ID); err != nil {
+				owned, err := repo.Ticket(ctx, buyer, ticket.ID)
+				if err != nil {
 					t.Fatalf("own ticket: %v", err)
+				}
+				if owned.EventTitle != e.Title || owned.EventStartsAt == nil || !owned.EventStartsAt.Equal(when) ||
+					owned.TicketTypeTitle == "" || owned.OrderStatus != "confirmed" || owned.EventStatus != "published" {
+					t.Fatalf("own ticket metadata: %+v", owned)
 				}
 				if _, err := repo.Ticket(ctx, another, ticket.ID); !errors.Is(err, domain.ErrEventNotFound) {
 					t.Fatalf("foreign ticket: %v", err)

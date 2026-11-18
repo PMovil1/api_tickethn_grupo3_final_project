@@ -133,12 +133,19 @@ type Order struct {
 }
 
 type Ticket struct {
-	ID             string
-	EventID        string
-	OrderID        string
-	TicketTypeID   string
-	Code           string
-	UnitPriceCents int64
-	CreatedAt      time.Time
-	UsedAt         *time.Time
+	ID              string
+	EventID         string
+	OrderID         string
+	TicketTypeID    string
+	Code            string
+	UnitPriceCents  int64
+	CreatedAt       time.Time
+	UsedAt          *time.Time
+	EventTitle      string
+	EventAddress    *string
+	EventStartsAt   *time.Time
+	EventCoverURL   *string
+	EventStatus     string
+	TicketTypeTitle string
+	OrderStatus     string
 }
