@@ -340,6 +340,26 @@ func (h *Events) Ticket(w http.ResponseWriter, r *http.Request) {
 	h.reply(w, r, http.StatusOK, out, err)
 }
 
+// CheckIn registers admission using the signed QR scanned by a validator.
+func (h *Events) CheckIn(w http.ResponseWriter, r *http.Request) {
+	var in struct {
+		QR string `json:"qr_payload"`
+	}
+	if !h.decode(w, r, &in) {
+		return
+	}
+	ticketID, eventID, usedAt, err := h.service.CheckIn(r.Context(), in.QR)
+	if err != nil {
+		h.fail(w, r, err)
+		return
+	}
+	response.JSON(w, http.StatusOK, struct {
+		TicketID string    `json:"ticket_id"`
+		EventID  string    `json:"event_id"`
+		UsedAt   time.Time `json:"used_at"`
+	}{TicketID: ticketID, EventID: eventID, UsedAt: usedAt.UTC()})
+}
+
 func (h *Events) validID(w http.ResponseWriter, r *http.Request, id string) bool {
 	if events.ValidID(id) {
 		return true
@@ -378,6 +398,12 @@ func (h *Events) fail(w http.ResponseWriter, r *http.Request, err error) {
 		response.Error(w, http.StatusConflict, "EVENT_CONFLICT", domain.ErrEventConflict.Error())
 	case errors.Is(err, domain.ErrTicketStock):
 		response.Error(w, http.StatusConflict, "TICKET_STOCK", domain.ErrTicketStock.Error())
+	case errors.Is(err, domain.ErrInvalidQR):
+		response.Error(w, http.StatusBadRequest, "INVALID_QR", err.Error())
+	case errors.Is(err, domain.ErrTicketUsed):
+		response.Error(w, http.StatusConflict, "TICKET_ALREADY_USED", err.Error())
+	case errors.Is(err, domain.ErrTicketBlocked):
+		response.Error(w, http.StatusConflict, "TICKET_NOT_ELIGIBLE", err.Error())
 	case errors.Is(err, events.ErrStorage):
 		response.Error(w, http.StatusServiceUnavailable, "STORAGE_UNAVAILABLE", events.ErrStorage.Error())
 	case errors.Is(err, events.ErrQR), errors.Is(err, context.DeadlineExceeded):

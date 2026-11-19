@@ -3,6 +3,7 @@ package database
 import (
 	"context"
 	"errors"
+	"time"
 
 	"github.com/JoseGaldamez/api_tickethn_grupo3_final_project/internal/application/events"
 	"github.com/JoseGaldamez/api_tickethn_grupo3_final_project/internal/domain"
@@ -285,4 +286,31 @@ func (r *Events) Tickets(ctx context.Context, buyer string, page events.Page) ([
 
 func (r *Events) Ticket(ctx context.Context, buyer, id string) (domain.Ticket, error) {
 	return scanOwnedTicket(r.pool.QueryRow(ctx, ownedTicketQuery+` AND t.id = $2`, buyer, id))
+}
+
+// CheckIn records a ticket's first use while locking the rows that determine eligibility.
+func (r *Events) CheckIn(ctx context.Context, ticketID, eventID string) (time.Time, error) {
+	var admittedAt time.Time
+	err := pgx.BeginTxFunc(ctx, r.pool, pgx.TxOptions{IsoLevel: pgx.ReadCommitted}, func(tx pgx.Tx) error {
+		var usedAt *time.Time
+		var orderStatus, eventStatus string
+		err := tx.QueryRow(ctx, `SELECT t.used_at, o.status, e.status
+			FROM public.tickets AS t
+			JOIN public.orders AS o ON o.id = t.order_id AND o.event_id = t.event_id
+			JOIN public.events AS e ON e.id = t.event_id
+			WHERE t.id = $1 AND t.event_id = $2
+			FOR UPDATE OF t FOR SHARE OF o, e`, ticketID, eventID).Scan(&usedAt, &orderStatus, &eventStatus)
+		if err != nil {
+			return notFound(err)
+		}
+		if usedAt != nil {
+			return domain.ErrTicketUsed
+		}
+		if orderStatus != "confirmed" || eventStatus != domain.Published {
+			return domain.ErrTicketBlocked
+		}
+		return tx.QueryRow(ctx, `UPDATE public.tickets SET used_at = clock_timestamp()
+			WHERE id = $1 RETURNING used_at`, ticketID).Scan(&admittedAt)
+	})
+	return admittedAt, err
 }

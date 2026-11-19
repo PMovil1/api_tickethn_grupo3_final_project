@@ -3,6 +3,7 @@ package router
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"image"
 	"image/png"
@@ -13,6 +14,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/JoseGaldamez/api_tickethn_grupo3_final_project/internal/application/events"
 	"github.com/JoseGaldamez/api_tickethn_grupo3_final_project/internal/domain"
@@ -23,12 +25,16 @@ import (
 )
 
 const testEventID = "80000000-0000-4000-8000-000000000001"
+const testQRKey = "dedicated-test-key-for-qr-signing"
 
 type eventIdentity struct{}
 
 func (eventIdentity) Authenticate(_ context.Context, token string) (domain.User, error) {
 	if token == "buyer" {
 		return domain.User{ID: token, Roles: []domain.Role{domain.Buyer}}, nil
+	}
+	if token == "validator" {
+		return domain.User{ID: token, Roles: []domain.Role{domain.Validator}}, nil
 	}
 	return domain.User{ID: token, Roles: []domain.Role{domain.Organizer}}, nil
 }
@@ -112,7 +118,7 @@ func (s *coverStub) Delete(_ context.Context, url string) error {
 
 func eventTestRouter(repo events.Repository, store events.CoverStore) chi.Router {
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
-	service := events.New(repo, store, security.NewTicketQR([]byte("dedicated-test-key-for-qr-signing")), logger)
+	service := events.New(repo, store, security.NewTicketQR([]byte(testQRKey)), logger)
 	r := chi.NewRouter()
 	Events(r, handlers.NewEvents(service, logger), middleware.RequireJWT(eventIdentity{}, logger))
 	return r
@@ -252,6 +258,79 @@ func TestEventOwnershipAndQR(t *testing.T) {
 			}
 			if tc.name == "own ticket" && !strings.Contains(w.Body.String(), `"qr_payload":"tickethn-ticket-v1.`+testEventID+"."+testEventID+".") {
 				t.Fatalf("missing signed payload: %s", w.Body)
+			}
+		})
+	}
+}
+
+type checkInRepoStub struct {
+	events.Repository
+	ticketID, eventID string
+	usedAt            time.Time
+	err               error
+}
+
+func (s *checkInRepoStub) CheckIn(_ context.Context, ticketID, eventID string) (time.Time, error) {
+	s.ticketID, s.eventID = ticketID, eventID
+	return s.usedAt, s.err
+}
+
+func TestTicketCheckIn(t *testing.T) {
+	const ticketID = "80000000-0000-4000-8000-000000000002"
+	signer := security.NewTicketQR([]byte(testQRKey))
+	qr := signer.Sign(ticketID, testEventID)
+	usedAt := time.Date(2026, 11, 19, 21, 0, 0, 0, time.UTC)
+	for _, tc := range []struct {
+		name, token, payload, code string
+		repoErr                    error
+		status                     int
+		reachesRepo                bool
+	}{
+		{"valid", "validator", qr, "", nil, 200, true},
+		{"repeat", "validator", qr, "TICKET_ALREADY_USED", domain.ErrTicketUsed, 409, true},
+		{"ineligible", "validator", qr, "TICKET_NOT_ELIGIBLE", domain.ErrTicketBlocked, 409, true},
+		{"missing", "validator", qr, "NOT_FOUND", domain.ErrEventNotFound, 404, true},
+		{"tampered event", "validator", strings.Replace(qr, testEventID, ticketID, 1), "INVALID_QR", nil, 400, false},
+		{"malformed", "validator", "not-a-ticket", "INVALID_QR", nil, 400, false},
+		{"buyer", "buyer", qr, "FORBIDDEN", nil, 403, false},
+		{"anonymous", "", qr, "UNAUTHORIZED", nil, 401, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			repo := &checkInRepoStub{usedAt: usedAt, err: tc.repoErr}
+			r := eventTestRouter(repo, nil)
+			body, err := json.Marshal(map[string]string{"qr_payload": tc.payload})
+			if err != nil {
+				t.Fatal(err)
+			}
+			req := httptest.NewRequest(http.MethodPost, "/api/tickets/check-in", bytes.NewReader(body))
+			if tc.token != "" {
+				req.Header.Set("Authorization", "Bearer "+tc.token)
+			}
+			w := httptest.NewRecorder()
+			r.ServeHTTP(w, req)
+			if w.Code != tc.status {
+				t.Fatalf("status=%d body=%s", w.Code, w.Body)
+			}
+			if tc.reachesRepo && (repo.ticketID != ticketID || repo.eventID != testEventID) ||
+				!tc.reachesRepo && repo.ticketID != "" {
+				t.Fatalf("unexpected repository call with ticket %q and event %q", repo.ticketID, repo.eventID)
+			}
+			if tc.code != "" {
+				if !strings.Contains(w.Body.String(), `"code":"`+tc.code+`"`) {
+					t.Fatalf("missing error %s: %s", tc.code, w.Body)
+				}
+				return
+			}
+			var result struct {
+				TicketID string    `json:"ticket_id"`
+				EventID  string    `json:"event_id"`
+				UsedAt   time.Time `json:"used_at"`
+			}
+			if err := json.Unmarshal(w.Body.Bytes(), &result); err != nil {
+				t.Fatal(err)
+			}
+			if result.TicketID != ticketID || result.EventID != testEventID || !result.UsedAt.Equal(usedAt) {
+				t.Fatalf("unexpected check-in: %+v", result)
 			}
 		})
 	}

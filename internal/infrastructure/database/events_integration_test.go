@@ -233,4 +233,57 @@ func TestEventsPostgres(t *testing.T) {
 	if _, err := service.Edit(ctx, owner, e.ID, func(d *domain.EventDetails) { next := when.Add(time.Hour); d.StartsAt = &next }); !errors.Is(err, domain.ErrEventConflict) {
 		t.Fatalf("event reschedule after purchase: %v", err)
 	}
+	t.Run("only one check-in records the ticket use", func(t *testing.T) {
+		tickets, err := repo.Tickets(ctx, buyer, page)
+		if err != nil || len(tickets) != 1 {
+			t.Fatalf("tickets: %+v, %v", tickets, err)
+		}
+		ticket := tickets[0]
+		if _, err := repo.CheckIn(ctx, ticket.ID, owner); !errors.Is(err, domain.ErrEventNotFound) {
+			t.Fatalf("ticket with different event: %v", err)
+		}
+		if _, err := pool.Exec(ctx, "UPDATE public.orders SET status = 'cancelled' WHERE id = $1", ticket.OrderID); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := repo.CheckIn(ctx, ticket.ID, e.ID); !errors.Is(err, domain.ErrTicketBlocked) {
+			t.Fatalf("ticket with cancelled order: %v", err)
+		}
+		if _, err := pool.Exec(ctx, "UPDATE public.orders SET status = 'confirmed' WHERE id = $1", ticket.OrderID); err != nil {
+			t.Fatal(err)
+		}
+		type result struct {
+			usedAt time.Time
+			err    error
+		}
+		start := make(chan struct{})
+		results := make(chan result, 2)
+		for range 2 {
+			go func() {
+				<-start
+				usedAt, err := repo.CheckIn(ctx, ticket.ID, e.ID)
+				results <- result{usedAt, err}
+			}()
+		}
+		close(start)
+		var admittedAt time.Time
+		duplicates := 0
+		for range 2 {
+			got := <-results
+			switch {
+			case got.err == nil:
+				admittedAt = got.usedAt
+			case errors.Is(got.err, domain.ErrTicketUsed):
+				duplicates++
+			default:
+				t.Fatalf("unexpected check-in error: %v", got.err)
+			}
+		}
+		if admittedAt.IsZero() || duplicates != 1 {
+			t.Fatalf("admitted at %v, duplicates=%d", admittedAt, duplicates)
+		}
+		owned, err := repo.Ticket(ctx, buyer, ticket.ID)
+		if err != nil || owned.UsedAt == nil || !owned.UsedAt.Equal(admittedAt) || owned.OrderStatus != "confirmed" {
+			t.Fatalf("unexpected ticket after check-in: %+v, %v", owned, err)
+		}
+	})
 }

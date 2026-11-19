@@ -13,6 +13,9 @@ var (
 	ErrEventInput    = errors.New("datos inválidos")
 	ErrEventConflict = errors.New("el estado actual impide la operación")
 	ErrTicketStock   = errors.New("cupo insuficiente o localidad inactiva")
+	ErrInvalidQR     = errors.New("el código QR del boleto no es válido")
+	ErrTicketUsed    = errors.New("el boleto ya fue utilizado")
+	ErrTicketBlocked = errors.New("el evento o la orden no permite el ingreso")
 )
 
 // Event represents an organizer's draft or listing.

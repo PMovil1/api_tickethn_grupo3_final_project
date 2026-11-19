@@ -2,6 +2,7 @@ package events
 
 import (
 	"context"
+	"time"
 
 	"github.com/JoseGaldamez/api_tickethn_grupo3_final_project/internal/domain"
 )
@@ -23,6 +24,7 @@ type Repository interface {
 	Orders(context.Context, string, Page) ([]domain.Order, error)
 	Tickets(context.Context, string, Page) ([]domain.Ticket, error)
 	Ticket(context.Context, string, string) (domain.Ticket, error)
+	CheckIn(ctx context.Context, ticketID, eventID string) (time.Time, error)
 }
 
 // EventTransaction operates while holding the event row lock.

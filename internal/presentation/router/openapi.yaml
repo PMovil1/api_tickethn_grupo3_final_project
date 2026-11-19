@@ -597,6 +597,50 @@ paths:
         '404': {$ref: '#/components/responses/EventNotFound'}
         '500': {$ref: '#/components/responses/Internal'}
         '503': {$ref: '#/components/responses/EventUnavailable'}
+  /api/tickets/check-in:
+    post:
+      operationId: checkInTicket
+      tags: [Boletos]
+      summary: Registrar el ingreso con un boleto
+      description: Requiere el rol VALIDADOR. Verifica la firma del QR, el evento publicado y la orden confirmada. Registra un solo ingreso por boleto.
+      security: [{BearerAuth: []}]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [qr_payload]
+              properties:
+                qr_payload: {type: string, description: Contenido completo del QR firmado}
+      responses:
+        '200':
+          description: Entrada registrada
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [ticket_id, event_id, used_at]
+                properties:
+                  ticket_id: {type: string, format: uuid}
+                  event_id: {type: string, format: uuid}
+                  used_at: {type: string, format: date-time}
+        '400':
+          description: INVALID_QR para un QR inválido o INVALID_INPUT para un cuerpo inválido.
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Error'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '404': {$ref: '#/components/responses/EventNotFound'}
+        '409':
+          description: TICKET_ALREADY_USED si el boleto ya se utilizó o TICKET_NOT_ELIGIBLE si el evento o la orden impiden el ingreso.
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Error'}
+        '413': {$ref: '#/components/responses/EventTooLarge'}
+        '500': {$ref: '#/components/responses/Internal'}
+        '503': {$ref: '#/components/responses/EventUnavailable'}
 components:
   parameters:
     EventID:

@@ -2,6 +2,7 @@ package events
 
 import (
 	"context"
+	"crypto/hmac"
 	"crypto/rand"
 	"encoding/hex"
 	"errors"
@@ -69,6 +70,21 @@ func (s *Service) Ticket(ctx context.Context, buyer, id string) (domain.Ticket, 
 		return ticket, "", ErrQR
 	}
 	return ticket, s.qr.Sign(ticket.ID, ticket.EventID), nil
+}
+
+// CheckIn verifies the signed QR before recording admission.
+func (s *Service) CheckIn(ctx context.Context, payload string) (ticketID, eventID string, usedAt time.Time, err error) {
+	if s.qr == nil {
+		return "", "", time.Time{}, ErrQR
+	}
+	payload = strings.TrimSpace(payload)
+	parts := strings.SplitN(payload, ".", 4)
+	if len(parts) != 4 || !ValidID(parts[1]) || !ValidID(parts[2]) ||
+		!hmac.Equal([]byte(payload), []byte(s.qr.Sign(parts[1], parts[2]))) {
+		return "", "", time.Time{}, domain.ErrInvalidQR
+	}
+	usedAt, err = s.repo.CheckIn(ctx, parts[1], parts[2])
+	return parts[1], parts[2], usedAt, err
 }
 
 func (s *Service) Create(ctx context.Context, owner string, details domain.EventDetails, cover *Cover) (domain.Event, error) {
