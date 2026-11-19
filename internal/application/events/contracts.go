@@ -24,6 +24,7 @@ type Repository interface {
 	Orders(context.Context, string, Page) ([]domain.Order, error)
 	Tickets(context.Context, string, Page) ([]domain.Ticket, error)
 	Ticket(context.Context, string, string) (domain.Ticket, error)
+	LookupTicket(ctx context.Context, ticketID, eventID string) (domain.ScannedTicket, error)
 	CheckIn(ctx context.Context, ticketID, eventID string) (time.Time, error)
 }
 

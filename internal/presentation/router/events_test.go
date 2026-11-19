@@ -12,6 +12,7 @@ import (
 	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -331,6 +332,78 @@ func TestTicketCheckIn(t *testing.T) {
 			}
 			if result.TicketID != ticketID || result.EventID != testEventID || !result.UsedAt.Equal(usedAt) {
 				t.Fatalf("unexpected check-in: %+v", result)
+			}
+		})
+	}
+}
+
+type lookupTicketRepoStub struct {
+	events.Repository
+	ticketID, eventID string
+	ticket            domain.ScannedTicket
+	err               error
+}
+
+func (s *lookupTicketRepoStub) LookupTicket(_ context.Context, ticketID, eventID string) (domain.ScannedTicket, error) {
+	s.ticketID, s.eventID = ticketID, eventID
+	return s.ticket, s.err
+}
+
+func TestTicketLookup(t *testing.T) {
+	const ticketID = "80000000-0000-4000-8000-000000000002"
+	qr := security.NewTicketQR([]byte(testQRKey)).Sign(ticketID, testEventID)
+	purchasedAt := time.Date(2026, 11, 19, 21, 0, 0, 0, time.UTC)
+	for _, tc := range []struct {
+		name, token, payload string
+		repoErr              error
+		status               int
+		reachesRepo          bool
+	}{
+		{"valid", "validator", qr, nil, http.StatusOK, true},
+		{"missing", "validator", qr, domain.ErrEventNotFound, http.StatusNotFound, true},
+		{"tampered", "validator", strings.Replace(qr, testEventID, ticketID, 1), nil, http.StatusBadRequest, false},
+		{"buyer", "buyer", qr, nil, http.StatusForbidden, false},
+		{"anonymous", "", qr, nil, http.StatusUnauthorized, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			repo := &lookupTicketRepoStub{err: tc.repoErr, ticket: domain.ScannedTicket{
+				BuyerName: "María López", PurchasedAt: purchasedAt, EventTitle: "Concierto",
+				TicketTypeTitle: "General", Code: "TKHN-123", CanCheckIn: true,
+			}}
+			body, err := json.Marshal(map[string]string{"qr_payload": tc.payload})
+			if err != nil {
+				t.Fatal(err)
+			}
+			req := httptest.NewRequest(http.MethodPost, "/api/tickets/lookup", bytes.NewReader(body))
+			if tc.token != "" {
+				req.Header.Set("Authorization", "Bearer "+tc.token)
+			}
+			w := httptest.NewRecorder()
+			eventTestRouter(repo, nil).ServeHTTP(w, req)
+			if w.Code != tc.status {
+				t.Fatalf("status=%d body=%s", w.Code, w.Body)
+			}
+			if tc.reachesRepo && (repo.ticketID != ticketID || repo.eventID != testEventID) ||
+				!tc.reachesRepo && repo.ticketID != "" {
+				t.Fatalf("unexpected repository call with ticket %q and event %q", repo.ticketID, repo.eventID)
+			}
+			if tc.status != http.StatusOK {
+				return
+			}
+			if w.Header().Get("Cache-Control") != "no-store" {
+				t.Fatal("ticket lookup response must not be cached")
+			}
+			var result map[string]any
+			if err := json.Unmarshal(w.Body.Bytes(), &result); err != nil {
+				t.Fatal(err)
+			}
+			want := map[string]any{
+				"buyer_name": "María López", "purchased_at": purchasedAt.Format(time.RFC3339),
+				"event_title": "Concierto", "ticket_type_title": "General",
+				"code": "TKHN-123", "used_at": nil, "can_check_in": true,
+			}
+			if !reflect.DeepEqual(result, want) {
+				t.Fatalf("unexpected ticket lookup: %+v", result)
 			}
 		})
 	}

@@ -72,19 +72,36 @@ func (s *Service) Ticket(ctx context.Context, buyer, id string) (domain.Ticket, 
 	return ticket, s.qr.Sign(ticket.ID, ticket.EventID), nil
 }
 
+// LookupTicket reads purchase details for a signed QR.
+func (s *Service) LookupTicket(ctx context.Context, payload string) (domain.ScannedTicket, error) {
+	ticketID, eventID, err := s.verifyTicketQR(payload)
+	if err != nil {
+		return domain.ScannedTicket{}, err
+	}
+	return s.repo.LookupTicket(ctx, ticketID, eventID)
+}
+
 // CheckIn verifies the signed QR before recording admission.
 func (s *Service) CheckIn(ctx context.Context, payload string) (ticketID, eventID string, usedAt time.Time, err error) {
+	ticketID, eventID, err = s.verifyTicketQR(payload)
+	if err != nil {
+		return "", "", time.Time{}, err
+	}
+	usedAt, err = s.repo.CheckIn(ctx, ticketID, eventID)
+	return ticketID, eventID, usedAt, err
+}
+
+func (s *Service) verifyTicketQR(payload string) (ticketID, eventID string, err error) {
 	if s.qr == nil {
-		return "", "", time.Time{}, ErrQR
+		return "", "", ErrQR
 	}
 	payload = strings.TrimSpace(payload)
 	parts := strings.SplitN(payload, ".", 4)
 	if len(parts) != 4 || !ValidID(parts[1]) || !ValidID(parts[2]) ||
 		!hmac.Equal([]byte(payload), []byte(s.qr.Sign(parts[1], parts[2]))) {
-		return "", "", time.Time{}, domain.ErrInvalidQR
+		return "", "", domain.ErrInvalidQR
 	}
-	usedAt, err = s.repo.CheckIn(ctx, parts[1], parts[2])
-	return parts[1], parts[2], usedAt, err
+	return parts[1], parts[2], nil
 }
 
 func (s *Service) Create(ctx context.Context, owner string, details domain.EventDetails, cover *Cover) (domain.Event, error) {

@@ -155,6 +155,7 @@ Ejecuta las pruebas cuando `pg_isready` indique que PostgreSQL acepta conexiones
 | `GET /api/orders` | COMPRADOR | `200` con las órdenes propias. |
 | `GET /api/tickets` | COMPRADOR | `200` con los boletos propios. |
 | `GET /api/tickets/{id}` | COMPRADOR | `200` con el boleto propio y su `qr_payload`. |
+| `POST /api/tickets/lookup` | VALIDADOR | Recibe `{"qr_payload":"…"}` y devuelve el nombre del comprador, la fecha de compra, el evento, la localidad, el código y el estado de uso. Es una consulta de solo lectura. |
 | `POST /api/tickets/check-in` | VALIDADOR | Recibe `{"qr_payload":"…"}`. Devuelve `200` con `ticket_id`, `event_id` y `used_at` al registrar la entrada. |
 
 Las rutas protegidas usan `Authorization: Bearer <access_token>`. Los identificadores son UUID. Los listados devuelven arreglos y aceptan `limit` (1 a 100, por defecto 20) y `offset` (entero no negativo, por defecto 0). Los listados privados se ordenan por creación e ID descendentes.

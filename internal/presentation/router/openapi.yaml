@@ -597,6 +597,49 @@ paths:
         '404': {$ref: '#/components/responses/EventNotFound'}
         '500': {$ref: '#/components/responses/Internal'}
         '503': {$ref: '#/components/responses/EventUnavailable'}
+  /api/tickets/lookup:
+    post:
+      operationId: lookupTicket
+      tags: [Boletos]
+      summary: Consultar un boleto escaneado
+      description: Requiere el rol VALIDADOR y el QR firmado. Consulta la compra y el estado del boleto sin registrar el ingreso.
+      security: [{BearerAuth: []}]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [qr_payload]
+              properties:
+                qr_payload: {type: string, description: Contenido completo del QR firmado}
+      responses:
+        '200':
+          description: Datos de la compra y estado del boleto
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [buyer_name, purchased_at, event_title, ticket_type_title, code, used_at, can_check_in]
+                properties:
+                  buyer_name: {type: string}
+                  purchased_at: {type: string, format: date-time}
+                  event_title: {type: string}
+                  ticket_type_title: {type: string}
+                  code: {type: string}
+                  used_at: {type: string, format: date-time, nullable: true}
+                  can_check_in: {type: boolean, description: Elegibilidad al momento de consultar}
+        '400':
+          description: INVALID_QR para un QR inválido o INVALID_INPUT para un cuerpo inválido.
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Error'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '404': {$ref: '#/components/responses/EventNotFound'}
+        '413': {$ref: '#/components/responses/EventTooLarge'}
+        '500': {$ref: '#/components/responses/Internal'}
+        '503': {$ref: '#/components/responses/EventUnavailable'}
   /api/tickets/check-in:
     post:
       operationId: checkInTicket

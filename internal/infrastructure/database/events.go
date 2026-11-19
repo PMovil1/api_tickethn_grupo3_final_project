@@ -288,6 +288,30 @@ func (r *Events) Ticket(ctx context.Context, buyer, id string) (domain.Ticket, e
 	return scanOwnedTicket(r.pool.QueryRow(ctx, ownedTicketQuery+` AND t.id = $2`, buyer, id))
 }
 
+// LookupTicket returns the details a validator can see before recording admission.
+func (r *Events) LookupTicket(ctx context.Context, ticketID, eventID string) (domain.ScannedTicket, error) {
+	var ticket domain.ScannedTicket
+	var orderStatus, eventStatus string
+	err := r.pool.QueryRow(ctx, `SELECT u.full_name, o.created_at, e.title, tt.title, t.code, t.used_at, o.status, e.status
+		FROM public.tickets AS t
+		JOIN public.orders AS o ON o.id = t.order_id AND o.event_id = t.event_id
+		JOIN public.users AS u ON u.id = o.buyer_id
+		JOIN public.events AS e ON e.id = t.event_id
+		JOIN public.ticket_types AS tt ON tt.id = t.ticket_type_id AND tt.event_id = t.event_id
+		WHERE t.id = $1 AND t.event_id = $2`, ticketID, eventID).Scan(
+		&ticket.BuyerName, &ticket.PurchasedAt, &ticket.EventTitle, &ticket.TicketTypeTitle,
+		&ticket.Code, &ticket.UsedAt, &orderStatus, &eventStatus)
+	if err != nil {
+		return domain.ScannedTicket{}, notFound(err)
+	}
+	ticket.CanCheckIn = ticket.UsedAt == nil && ticketOrderAndEventEligible(orderStatus, eventStatus)
+	return ticket, nil
+}
+
+func ticketOrderAndEventEligible(orderStatus, eventStatus string) bool {
+	return orderStatus == "confirmed" && eventStatus == domain.Published
+}
+
 // CheckIn records a ticket's first use while locking the rows that determine eligibility.
 func (r *Events) CheckIn(ctx context.Context, ticketID, eventID string) (time.Time, error) {
 	var admittedAt time.Time
@@ -306,7 +330,7 @@ func (r *Events) CheckIn(ctx context.Context, ticketID, eventID string) (time.Ti
 		if usedAt != nil {
 			return domain.ErrTicketUsed
 		}
-		if orderStatus != "confirmed" || eventStatus != domain.Published {
+		if !ticketOrderAndEventEligible(orderStatus, eventStatus) {
 			return domain.ErrTicketBlocked
 		}
 		return tx.QueryRow(ctx, `UPDATE public.tickets SET used_at = clock_timestamp()

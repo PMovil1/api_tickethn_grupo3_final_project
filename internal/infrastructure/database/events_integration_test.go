@@ -17,7 +17,7 @@ import (
 
 // Minimal local fixture matching the event schema read from Supabase.
 const eventFixture = `
-CREATE TABLE public.users (id uuid PRIMARY KEY);
+CREATE TABLE public.users (id uuid PRIMARY KEY, full_name text NOT NULL);
 CREATE TABLE public.events (
 	id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
 	organizer_id uuid NOT NULL REFERENCES public.users(id),
@@ -104,10 +104,12 @@ func TestEventsPostgres(t *testing.T) {
 		owner     = "80000000-0000-4000-8000-000000000001"
 		buyer     = "80000000-0000-4000-8000-000000000002"
 		another   = "80000000-0000-4000-8000-000000000003"
+		buyerName = "María López"
 		firstType = "10000000-0000-4000-8000-000000000001"
 		lastType  = "90000000-0000-4000-8000-000000000001"
 	)
-	if _, err := pool.Exec(ctx, `INSERT INTO public.users VALUES ($1),($2),($3)`, owner, buyer, another); err != nil {
+	if _, err := pool.Exec(ctx, `INSERT INTO public.users VALUES ($1,'Organizador'),($2,$4),($3,'Otro comprador')`,
+		owner, buyer, another, buyerName); err != nil {
 		t.Fatal(err)
 	}
 	repo := NewEvents(pool)
@@ -239,6 +241,19 @@ func TestEventsPostgres(t *testing.T) {
 			t.Fatalf("tickets: %+v, %v", tickets, err)
 		}
 		ticket := tickets[0]
+		orders, err := repo.Orders(ctx, buyer, page)
+		if err != nil || len(orders) != 1 {
+			t.Fatalf("orders: %+v, %v", orders, err)
+		}
+		lookup, err := repo.LookupTicket(ctx, ticket.ID, e.ID)
+		if err != nil || lookup.BuyerName != buyerName || !lookup.PurchasedAt.Equal(orders[0].CreatedAt) ||
+			lookup.EventTitle != e.Title || lookup.TicketTypeTitle != ticket.TicketTypeTitle ||
+			lookup.Code != ticket.Code || lookup.UsedAt != nil || !lookup.CanCheckIn {
+			t.Fatalf("unexpected ticket lookup: %+v, %v", lookup, err)
+		}
+		if _, err := repo.LookupTicket(ctx, ticket.ID, owner); !errors.Is(err, domain.ErrEventNotFound) {
+			t.Fatalf("lookup with different event: %v", err)
+		}
 		if _, err := repo.CheckIn(ctx, ticket.ID, owner); !errors.Is(err, domain.ErrEventNotFound) {
 			t.Fatalf("ticket with different event: %v", err)
 		}
@@ -247,6 +262,10 @@ func TestEventsPostgres(t *testing.T) {
 		}
 		if _, err := repo.CheckIn(ctx, ticket.ID, e.ID); !errors.Is(err, domain.ErrTicketBlocked) {
 			t.Fatalf("ticket with cancelled order: %v", err)
+		}
+		lookup, err = repo.LookupTicket(ctx, ticket.ID, e.ID)
+		if err != nil || lookup.UsedAt != nil || lookup.CanCheckIn {
+			t.Fatalf("lookup with cancelled order: %+v, %v", lookup, err)
 		}
 		if _, err := pool.Exec(ctx, "UPDATE public.orders SET status = 'confirmed' WHERE id = $1", ticket.OrderID); err != nil {
 			t.Fatal(err)
@@ -284,6 +303,10 @@ func TestEventsPostgres(t *testing.T) {
 		owned, err := repo.Ticket(ctx, buyer, ticket.ID)
 		if err != nil || owned.UsedAt == nil || !owned.UsedAt.Equal(admittedAt) || owned.OrderStatus != "confirmed" {
 			t.Fatalf("unexpected ticket after check-in: %+v, %v", owned, err)
+		}
+		lookup, err = repo.LookupTicket(ctx, ticket.ID, e.ID)
+		if err != nil || lookup.UsedAt == nil || !lookup.UsedAt.Equal(admittedAt) || lookup.CanCheckIn {
+			t.Fatalf("lookup after check-in: %+v, %v", lookup, err)
 		}
 	})
 }

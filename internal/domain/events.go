@@ -152,3 +152,14 @@ type Ticket struct {
 	TicketTypeTitle string
 	OrderStatus     string
 }
+
+// ScannedTicket contains the purchase and admission details shown to a validator.
+type ScannedTicket struct {
+	BuyerName       string
+	PurchasedAt     time.Time
+	EventTitle      string
+	TicketTypeTitle string
+	Code            string
+	UsedAt          *time.Time
+	CanCheckIn      bool
+}

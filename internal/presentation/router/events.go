@@ -30,5 +30,9 @@ func Events(r chi.Router, h *handlers.Events, jwt func(http.Handler) http.Handle
 		buyer.Get("/api/tickets", h.Tickets)
 		buyer.Get("/api/tickets/{id}", h.Ticket)
 	})
-	r.With(jwt, middleware.RequireRoles(domain.Validator)).Post("/api/tickets/check-in", h.CheckIn)
+	r.Group(func(validator chi.Router) {
+		validator.Use(jwt, middleware.RequireRoles(domain.Validator))
+		validator.Post("/api/tickets/lookup", h.LookupTicket)
+		validator.Post("/api/tickets/check-in", h.CheckIn)
+	})
 }

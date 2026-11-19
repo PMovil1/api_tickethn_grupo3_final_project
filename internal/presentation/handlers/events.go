@@ -340,11 +340,38 @@ func (h *Events) Ticket(w http.ResponseWriter, r *http.Request) {
 	h.reply(w, r, http.StatusOK, out, err)
 }
 
+type ticketQRInput struct {
+	QR string `json:"qr_payload"`
+}
+
+// LookupTicket returns purchase details without registering admission.
+func (h *Events) LookupTicket(w http.ResponseWriter, r *http.Request) {
+	var in ticketQRInput
+	if !h.decode(w, r, &in) {
+		return
+	}
+	ticket, err := h.service.LookupTicket(r.Context(), in.QR)
+	if err != nil {
+		h.fail(w, r, err)
+		return
+	}
+	response.JSON(w, http.StatusOK, struct {
+		BuyerName       string     `json:"buyer_name"`
+		PurchasedAt     time.Time  `json:"purchased_at"`
+		EventTitle      string     `json:"event_title"`
+		TicketTypeTitle string     `json:"ticket_type_title"`
+		Code            string     `json:"code"`
+		UsedAt          *time.Time `json:"used_at"`
+		CanCheckIn      bool       `json:"can_check_in"`
+	}{
+		BuyerName: ticket.BuyerName, PurchasedAt: ticket.PurchasedAt.UTC(), EventTitle: ticket.EventTitle,
+		TicketTypeTitle: ticket.TicketTypeTitle, Code: ticket.Code, UsedAt: ticket.UsedAt, CanCheckIn: ticket.CanCheckIn,
+	})
+}
+
 // CheckIn registers admission using the signed QR scanned by a validator.
 func (h *Events) CheckIn(w http.ResponseWriter, r *http.Request) {
-	var in struct {
-		QR string `json:"qr_payload"`
-	}
+	var in ticketQRInput
 	if !h.decode(w, r, &in) {
 		return
 	}
