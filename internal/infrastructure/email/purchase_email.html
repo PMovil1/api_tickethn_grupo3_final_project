@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Tus boletos de TicketHN</title>
+</head>
+<body style="margin:0;background:#edf2f9;font-family:Arial,sans-serif;color:#0b1f4d">
+  <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="background:#edf2f9">
+    <tr><td align="center" style="padding:24px 12px">
+      <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="max-width:560px;background:#ffffff;border:1px solid #d8e1f0;border-radius:18px">
+        <tr><td style="padding:24px 28px 28px;background:#0b1f4d;color:#ffffff;border-radius:17px 17px 0 0;border-top:5px solid #2563eb">
+          <p style="margin:0 0 22px;font-size:19px;font-weight:bold">TicketHN</p>
+          <p style="margin:0 0 6px;color:#6ee7b7;font-size:14px">{{if eq (len .Tickets) 1}}Boleto emitido{{else}}Boletos emitidos{{end}}</p>
+          <h1 style="margin:0;font-size:28px;line-height:1.2">¡Gracias por tu compra!</h1>
+        </td></tr>
+        <tr><td style="padding:24px 28px">
+          <p style="margin:0 0 18px;font-size:16px;line-height:1.5">Hola, {{.BuyerName}}. Abre el PDF adjunto y presenta el QR de cada boleto en la entrada.</p>
+          <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="background:#eef4ff;border-radius:12px">
+            <tr><td style="padding:16px 18px;overflow-wrap:anywhere">
+              <h2 style="margin:0 0 8px;font-size:22px;line-height:1.25">{{.EventTitle}}</h2>
+              <p style="margin:0;color:#354664;font-size:15px;line-height:1.5">{{.When}}<br>{{.Address}}</p>
+            </td></tr>
+          </table>
+          <h2 style="margin:22px 0 5px;font-size:17px">{{if eq (len .Tickets) 1}}1 boleto{{else}}{{len .Tickets}} boletos{{end}}</h2>
+          <table width="100%" cellspacing="0" cellpadding="0" style="font-size:15px;line-height:1.4">
+            <thead><tr>
+              <th align="left" scope="col" style="padding:8px 8px 8px 0;color:#354664;border-bottom:1px solid #d8e1f0">Localidad</th>
+              <th align="right" scope="col" style="padding:8px 0 8px 8px;color:#354664;border-bottom:1px solid #d8e1f0">Folio</th>
+            </tr></thead>
+            <tbody>
+            {{range .Tickets}}<tr>
+              <td style="padding:10px 8px 10px 0;border-bottom:1px solid #d8e1f0;overflow-wrap:anywhere">{{.Locality}}</td>
+              <td align="right" style="padding:10px 0 10px 8px;border-bottom:1px solid #d8e1f0;color:#1745a1"><strong>{{.Code}}</strong></td>
+            </tr>{{end}}
+            </tbody>
+          </table>
+          <p style="margin:18px 0 0;color:#354664;font-size:14px;line-height:1.5">También encuentras tus entradas en <strong>Mis boletos</strong> en la app TicketHN.</p>
+        </td></tr>
+      </table>
+    </td></tr>
+  </table>
+</body>
+</html>

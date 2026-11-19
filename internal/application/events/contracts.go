@@ -40,6 +40,7 @@ type EventTransaction interface {
 	Reserve(string, int) (int64, error)
 	CreateOrder(string, int64) (domain.Order, error)
 	IssueTickets(string, string, int64, int) ([]domain.Ticket, error)
+	QueuePurchaseEmail(orderID string) error
 }
 
 type Cover struct {

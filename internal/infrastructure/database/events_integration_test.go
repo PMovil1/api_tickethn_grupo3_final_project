@@ -17,7 +17,7 @@ import (
 
 // Minimal local fixture matching the event schema read from Supabase.
 const eventFixture = `
-CREATE TABLE public.users (id uuid PRIMARY KEY, full_name text NOT NULL);
+CREATE TABLE public.users (id uuid PRIMARY KEY, full_name text NOT NULL, email text NOT NULL);
 CREATE TABLE public.events (
 	id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
 	organizer_id uuid NOT NULL REFERENCES public.users(id),
@@ -95,11 +95,19 @@ func TestEventsPostgres(t *testing.T) {
 	defer func() {
 		cleanup, stop := context.WithTimeout(context.Background(), 5*time.Second)
 		defer stop()
-		if _, err := pool.Exec(cleanup, `DROP TABLE public.tickets, public.orders, public.ticket_types, public.events, public.users;
+		if _, err := pool.Exec(cleanup, `DROP TABLE IF EXISTS tickethn_internal.purchase_emails;
+			DROP TABLE public.tickets, public.orders, public.ticket_types, public.events, public.users;
 			DROP SEQUENCE public.tickethn_ticket_code_seq`); err != nil {
 			t.Errorf("clean up test fixture: %v", err)
 		}
 	}()
+	migration, err := os.ReadFile("migrations/001_purchase_emails.sql")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := pool.Exec(ctx, string(migration)); err != nil {
+		t.Fatalf("could not apply purchase email migration: %v", err)
+	}
 	const (
 		owner     = "80000000-0000-4000-8000-000000000001"
 		buyer     = "80000000-0000-4000-8000-000000000002"
@@ -108,7 +116,8 @@ func TestEventsPostgres(t *testing.T) {
 		firstType = "10000000-0000-4000-8000-000000000001"
 		lastType  = "90000000-0000-4000-8000-000000000001"
 	)
-	if _, err := pool.Exec(ctx, `INSERT INTO public.users VALUES ($1,'Organizador'),($2,$4),($3,'Otro comprador')`,
+	if _, err := pool.Exec(ctx, `INSERT INTO public.users VALUES
+		($1,'Organizador','organizador@example.test'),($2,$4,'maria@example.test'),($3,'Otro comprador','otro@example.test')`,
 		owner, buyer, another, buyerName); err != nil {
 		t.Fatal(err)
 	}
@@ -307,6 +316,44 @@ func TestEventsPostgres(t *testing.T) {
 		lookup, err = repo.LookupTicket(ctx, ticket.ID, e.ID)
 		if err != nil || lookup.UsedAt == nil || !lookup.UsedAt.Equal(admittedAt) || lookup.CanCheckIn {
 			t.Fatalf("lookup after check-in: %+v, %v", lookup, err)
+		}
+	})
+	t.Run("only committed orders queue a purchase email", func(t *testing.T) {
+		job, found, err := repo.ClaimPurchaseEmail(ctx)
+		if err != nil || !found || job.Attempt != 1 {
+			t.Fatalf("claim purchase email: %+v, %t, %v", job, found, err)
+		}
+		purchase, err := repo.PurchaseEmail(ctx, job.OrderID)
+		if err != nil || purchase.Recipient != "maria@example.test" || purchase.BuyerName != buyerName ||
+			purchase.EventTitle != e.Title || len(purchase.Tickets) != 1 || purchase.Tickets[0].Locality == "" {
+			t.Fatalf("unexpected purchase email: %+v, %v", purchase, err)
+		}
+		if _, found, err := repo.ClaimPurchaseEmail(ctx); err != nil || found {
+			t.Fatalf("uncommitted or already leased purchase was claimed: %t, %v", found, err)
+		}
+		body := []byte(`{"subject":"Confirmation"}`)
+		if err := repo.SavePurchaseEmailRequest(ctx, job, body); err != nil {
+			t.Fatal(err)
+		}
+		if err := repo.RetryPurchaseEmail(ctx, job, 0); err != nil {
+			t.Fatal(err)
+		}
+		retry, found, err := repo.ClaimPurchaseEmail(ctx)
+		if err != nil || !found || retry.OrderID != job.OrderID || retry.Attempt != 2 ||
+			retry.FirstAttemptAt == nil || string(retry.RequestBody) != string(body) {
+			t.Fatalf("claim retry: %+v, %t, %v", retry, found, err)
+		}
+		if err := repo.FinishPurchaseEmail(ctx, job, true); err == nil {
+			t.Fatal("stale lease could finish the purchase email")
+		}
+		if err := repo.FinishPurchaseEmail(ctx, retry, true); err != nil {
+			t.Fatal(err)
+		}
+		var succeeded, requestCleared bool
+		if err := pool.QueryRow(ctx, `SELECT sent_at IS NOT NULL, request_body IS NULL
+			FROM tickethn_internal.purchase_emails WHERE order_id = $1`, job.OrderID).Scan(&succeeded, &requestCleared); err != nil ||
+			!succeeded || !requestCleared {
+			t.Fatalf("finish purchase email: %t, %t, %v", succeeded, requestCleared, err)
 		}
 	})
 }

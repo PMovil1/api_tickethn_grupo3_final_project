@@ -346,7 +346,7 @@ func (s *Service) Buy(ctx context.Context, buyer, id string, items []domain.Orde
 			}
 			order.Tickets = append(order.Tickets, tickets...)
 		}
-		return nil
+		return tx.QueuePurchaseEmail(order.ID)
 	})
 	return order, err
 }

@@ -40,7 +40,7 @@ api_tickethn_grupo3_final_project/
 
 ## Ejecutar en local
 
-Necesitas acceso a PostgreSQL en Supabase con las tablas de autenticación y las tablas existentes `public.events`, `public.ticket_types`, `public.orders` y `public.tickets`, además de un remitente habilitado en Resend. Ejecuta los comandos desde la carpeta de la API.
+Necesitas acceso a PostgreSQL en Supabase con las tablas de autenticación y las tablas existentes `public.events`, `public.ticket_types`, `public.orders` y `public.tickets`, además de un remitente habilitado en Resend. Aplica la [migración de correos de compra](internal/infrastructure/database/migrations/001_purchase_emails.sql) antes de ejecutar esta versión. Ejecuta los comandos desde la carpeta de la API.
 
 ```sh
 test -f .env || cp .env.example .env
@@ -168,6 +168,14 @@ Para comprar, envía `{"event_id":"<uuid>","items":[{"ticket_type_id":"<uuid>","
 
 Los errores mantienen el formato `{"error":{"code":"…","message":"…"}}`. Los campos inválidos o desconocidos devuelven `400 INVALID_INPUT`. Las rutas protegidas devuelven `401 UNAUTHORIZED` por un JWT inválido y `403 FORBIDDEN` por falta de rol. Un recurso ajeno, inexistente o ausente de la cartelera devuelve `404 NOT_FOUND`. Los conflictos de estado y de cupo devuelven `409 EVENT_CONFLICT` o `409 TICKET_STOCK`. Para afiches, `413 BODY_TOO_LARGE` indica exceso de tamaño y `415 INVALID_COVER` indica imagen inválida, formato incompatible o dimensiones fuera del límite. `503 STORAGE_UNAVAILABLE` indica un fallo de subida o falta de configuración de Storage.
 
+### Correo de compra
+
+Cada compra nueva guarda una confirmación pendiente en PostgreSQL dentro de la misma transacción que emite los boletos. El proceso de envío usa `RESEND_API_KEY` y `EMAIL_FROM`. Configura el mismo `TICKET_QR_SECRET` que firma los boletos de la app para que los QR del PDF se puedan validar.
+
+Aplica la [migración SQL](internal/infrastructure/database/migrations/001_purchase_emails.sql) en Supabase con el rol que administra el esquema antes de desplegar. El API debe conectarse con un rol que pueda leer y escribir en `tickethn_internal.purchase_emails`. En Cloud Run usa facturación basada en instancias y un mínimo de una instancia para procesar envíos y reintentos aunque no haya peticiones.
+
+La tabla registra cuándo se aceptó un envío en Resend (`sent_at`) o cuándo terminó con error (`failed_at`). El proceso reintenta fallos temporales con la misma clave de idempotencia por orden y libera el contenido preparado al terminar.
+
 ### Configurar y subir afiches
 
 En **Supabase → Storage**, crea el bucket público `event-covers` o el nombre configurado en `SUPABASE_EVENT_COVERS_BUCKET`. Limita cada objeto a **5 MiB (5 242 880 bytes)** y permite `image/jpeg`, `image/png` e `image/webp`. Mantén las operaciones de escritura y borrado reservadas al backend mediante la clave `service_role`. Guarda esa clave exclusivamente en el servidor. La lectura pública por URL también aplica a los afiches de borradores, que la cartelera excluye. [Control de acceso de Supabase Storage](https://supabase.com/docs/guides/storage/security/access-control)
@@ -259,6 +267,7 @@ La adopción requiere insertar el hash previo dentro de la misma transacción qu
    | `DATABASE_URL` | URI de **Session pooler** de Supabase, puerto `5432`, con la contraseña codificada para URL y `sslmode=require`. |
    | `JWT_SECRET` | Secreto aleatorio de al menos 32 bytes para Cloud Run. |
    | `RESEND_API_KEY` | Clave de envío de Resend. |
+   | `TICKET_QR_SECRET` | Secreto de firma de los boletos. Usa el mismo valor que ya utiliza el API para los QR de Android. |
 
-4. Selecciona **Permitir acceso público** para que la app móvil pueda registrarse e iniciar sesión. Las rutas protegidas siguen validando el JWT de TicketHN. En **Facturación**, selecciona **Basada en instancias** para que Resend pueda procesar la cola después de responder. Se cobra mientras la instancia está activa. Puedes empezar con mínimo `0` y máximo `1` para acotar las conexiones a Supabase. La cola y los límites por IP y correo viven en memoria de la instancia. [Facturación en Cloud Run](https://docs.cloud.google.com/run/docs/configuring/billing-settings)
+4. Selecciona **Permitir acceso público** para que la app móvil pueda registrarse e iniciar sesión. Las rutas protegidas validan el JWT de TicketHN. En **Facturación**, selecciona **Basada en instancias** y configura un mínimo de `1` instancia para procesar los correos de compra aunque el servicio no reciba peticiones. Se cobra mientras la instancia está activa. La cola de correos de autenticación y los límites por IP y correo viven en memoria. [Facturación en Cloud Run](https://docs.cloud.google.com/run/docs/configuring/billing-settings)
 5. Crea el servicio. Abre `/api/health` en la URL que te dé Cloud Run y comprueba HTTP 200 con `"database":"connected"`. Para probar autenticación, importa `/api/openapi.yaml` desde esa misma URL en Postman y úsala como URL base.

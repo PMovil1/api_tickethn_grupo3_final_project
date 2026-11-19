@@ -32,6 +32,26 @@ var codeTemplate = template.Must(template.New("code").Parse(`
 </body>
 </html>`))
 
+type attachment struct {
+	Filename string `json:"filename"`
+	Content  []byte `json:"content"`
+}
+
+type messagePayload struct {
+	From        string       `json:"from"`
+	To          []string     `json:"to"`
+	Subject     string       `json:"subject"`
+	HTML        string       `json:"html"`
+	Text        string       `json:"text,omitempty"`
+	Attachments []attachment `json:"attachments,omitempty"`
+}
+
+type resendStatusError int
+
+func (err resendStatusError) Error() string {
+	return fmt.Sprintf("Resend responded with HTTP %d", err)
+}
+
 type Resend struct {
 	apiKey string
 	from   string
@@ -63,21 +83,23 @@ func (r *Resend) Send(ctx context.Context, to string, purpose domain.CodePurpose
 	if err := codeTemplate.Execute(&html, data); err != nil {
 		return err
 	}
-	payload, err := json.Marshal(struct {
-		From    string   `json:"from"`
-		To      []string `json:"to"`
-		Subject string   `json:"subject"`
-		HTML    string   `json:"html"`
-	}{From: r.from, To: []string{to}, Subject: data.Subject, HTML: html.String()})
+	payload, err := json.Marshal(messagePayload{From: r.from, To: []string{to}, Subject: data.Subject, HTML: html.String()})
 	if err != nil {
 		return err
 	}
+	return r.send(ctx, payload, "")
+}
+
+func (r *Resend) send(ctx context.Context, payload []byte, idempotencyKey string) error {
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, "https://api.resend.com/emails", bytes.NewReader(payload))
 	if err != nil {
 		return err
 	}
 	req.Header.Set("Authorization", "Bearer "+r.apiKey)
 	req.Header.Set("Content-Type", "application/json")
+	if idempotencyKey != "" {
+		req.Header.Set("Idempotency-Key", idempotencyKey)
+	}
 	resp, err := r.client.Do(req)
 	if err != nil {
 		return errors.New("Resend request failed")
@@ -85,7 +107,7 @@ func (r *Resend) Send(ctx context.Context, to string, purpose domain.CodePurpose
 	defer resp.Body.Close()
 	_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, 4096))
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return fmt.Errorf("Resend responded with HTTP %d", resp.StatusCode)
+		return resendStatusError(resp.StatusCode)
 	}
 	return nil
 }

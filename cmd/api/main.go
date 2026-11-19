@@ -68,7 +68,8 @@ func run(logger *slog.Logger) error {
 		return err
 	}
 	tokens := security.NewJWT(authConfig.JWTSecret, authConfig.Issuer, authConfig.AccessTTL)
-	mailer := email.NewQueue(ctx, email.NewResend(authConfig.ResendKey, authConfig.EmailFrom), logger)
+	resend := email.NewResend(authConfig.ResendKey, authConfig.EmailFrom)
+	mailer := email.NewQueue(ctx, resend, logger)
 	service := auth.New(database.NewAuthRepository(pool), passwords, tokens, mailer, logger, codeKey,
 		authConfig.AccessTTL, authConfig.RefreshTTL)
 	requireJWT := middleware.RequireJWT(service, logger)
@@ -81,7 +82,8 @@ func run(logger *slog.Logger) error {
 	if len(eventConfig.QRKey) > 0 {
 		qr = security.NewTicketQR(eventConfig.QRKey)
 	}
-	eventService := events.New(database.NewEvents(pool), covers, qr, logger)
+	eventRepo := database.NewEvents(pool)
+	eventService := events.New(eventRepo, covers, qr, logger)
 	router.Events(routes, handlers.NewEvents(eventService, logger), requireJWT)
 	server := &http.Server{
 		Addr:              ":" + cfg.Port,
@@ -95,6 +97,20 @@ func run(logger *slog.Logger) error {
 	listener, err := (&net.ListenConfig{}).Listen(ctx, "tcp", server.Addr)
 	if err != nil {
 		return fmt.Errorf("could not open HTTP listener: %w", err)
+	}
+	if qr != nil {
+		workerCtx, stopWorker := context.WithCancel(ctx)
+		workerDone := make(chan struct{})
+		go func() {
+			defer close(workerDone)
+			email.RunPurchaseEmails(workerCtx, eventRepo, resend, qr, logger)
+		}()
+		defer func() {
+			stopWorker()
+			<-workerDone
+		}()
+	} else {
+		logger.Warn("Purchase emails will remain queued until TICKET_QR_SECRET is configured")
 	}
 
 	serverErr := make(chan error, 1)
