@@ -974,7 +974,7 @@ components:
         access_token: {type: string, description: Access token JWT firmado}
         refresh_token: {type: string, description: Token opaco de un solo uso para renovación}
         token_type: {type: string, enum: [Bearer]}
-        expires_in: {type: integer, description: Vigencia del access token en segundos, example: 1800}
+        expires_in: {type: integer, description: Vigencia del access token en segundos, example: 2592000}
         user: {$ref: '#/components/schemas/User'}
     Session:
       type: object

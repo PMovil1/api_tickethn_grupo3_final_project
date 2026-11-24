@@ -53,8 +53,8 @@ test -f .env || cp .env.example .env
 | `DATABASE_URL` | Obligatoria. Copia la cadena PostgreSQL del panel **Connect** de Supabase, reemplaza el marcador por tu contraseña codificada para URL y conserva `sslmode=require` o la configuración TLS de tu proyecto. |
 | `JWT_SECRET` | Obligatoria. Usa un secreto aleatorio de al menos 32 bytes. Genera uno con `openssl rand -hex 32` y guárdalo en tu configuración privada. |
 | `JWT_ISSUER` | Emisor del access token. Predeterminado `tickethn-api`. |
-| `JWT_ACCESS_TTL_MINUTES` | Vigencia del access token. Predeterminado `30`. |
-| `JWT_REFRESH_TTL_DAYS` | Vigencia de la sesión desde el login. Predeterminado `7`. |
+| `JWT_ACCESS_TTL_MINUTES` | Vigencia del access token. Predeterminado `43200` minutos (30 días). |
+| `JWT_REFRESH_TTL_DAYS` | Vigencia de la sesión desde el login. Predeterminado `30` días. |
 | `RESEND_API_KEY` | Clave de envío de Resend. |
 | `EMAIL_FROM` | Remitente autorizado en Resend, por ejemplo `TicketHN <no-reply@tu-dominio>`. |
 | `SUPABASE_URL` | Origen HTTPS del proyecto para Storage, por ejemplo `https://<project-ref>.supabase.co`. |
@@ -172,7 +172,7 @@ Los errores mantienen el formato `{"error":{"code":"…","message":"…"}}`. Los
 
 Cada compra nueva guarda una confirmación pendiente en PostgreSQL dentro de la misma transacción que emite los boletos. El proceso de envío usa `RESEND_API_KEY` y `EMAIL_FROM`. Configura el mismo `TICKET_QR_SECRET` que firma los boletos de la app para que los QR del PDF se puedan validar.
 
-Aplica la [migración SQL](internal/infrastructure/database/migrations/001_purchase_emails.sql) en Supabase con el rol que administra el esquema antes de desplegar. El API debe conectarse con un rol que pueda leer y escribir en `tickethn_internal.purchase_emails`. En Cloud Run usa facturación basada en instancias y un mínimo de una instancia para procesar envíos y reintentos aunque no haya peticiones.
+Aplica la [migración SQL](internal/infrastructure/database/migrations/001_purchase_emails.sql) en Supabase antes de desplegar. La migración habilita RLS en `tickethn_internal.purchase_emails` sin políticas para clientes. Usa el mismo rol propietario de la tabla en la conexión PostgreSQL del API (`DATABASE_URL`). En Cloud Run usa facturación basada en instancias y un mínimo de una instancia para procesar envíos y reintentos aunque no haya peticiones.
 
 La tabla registra cuándo se aceptó un envío en Resend (`sent_at`) o cuándo terminó con error (`failed_at`). El proceso reintenta fallos temporales con la misma clave de idempotencia por orden y libera el contenido preparado al terminar.
 
@@ -258,7 +258,7 @@ La adopción requiere insertar el hash previo dentro de la misma transacción qu
    | `EMAIL_FROM` | `TicketHN <tickethn@kongrega.app>` si es el remitente que ya probaste en Resend. |
    | `APP_ENV` | `production`. El contenedor ya trae este valor por defecto. |
 
-   `JWT_ISSUER`, `JWT_ACCESS_TTL_MINUTES` y `JWT_REFRESH_TTL_DAYS` son opcionales. La API usa `tickethn-api`, `30` y `7` por defecto. Deja el puerto del contenedor en `8080`. Cloud Run inyecta `PORT`.
+   `JWT_ISSUER`, `JWT_ACCESS_TTL_MINUTES` y `JWT_REFRESH_TTL_DAYS` son opcionales. La API usa `tickethn-api`, `43200` y `30` por defecto. Deja el puerto del contenedor en `8080`. Cloud Run inyecta `PORT`.
 
 3. En **Secret Manager**, crea los tres secretos y concede a la cuenta de servicio de ejecución el rol **Secret Manager Secret Accessor** sobre cada uno. En **Variables y secretos → Referenciar un secreto**, elige una versión y expón cada secreto como variable de entorno con el nombre que espera la API. [Secretos en Cloud Run](https://docs.cloud.google.com/run/docs/configuring/services/secrets)
 

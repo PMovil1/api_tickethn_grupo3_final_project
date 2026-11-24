@@ -27,11 +27,11 @@ func LoadAuth() (Auth, error) {
 	if issuer == "" {
 		issuer = "tickethn-api"
 	}
-	accessTTL, err := durationEnv("JWT_ACCESS_TTL_MINUTES", 30, time.Minute)
+	accessTTL, err := durationEnv("JWT_ACCESS_TTL_MINUTES", 43200, time.Minute)
 	if err != nil {
 		return Auth{}, err
 	}
-	refreshTTL, err := durationEnv("JWT_REFRESH_TTL_DAYS", 7, 24*time.Hour)
+	refreshTTL, err := durationEnv("JWT_REFRESH_TTL_DAYS", 30, 24*time.Hour)
 	if err != nil {
 		return Auth{}, err
 	}

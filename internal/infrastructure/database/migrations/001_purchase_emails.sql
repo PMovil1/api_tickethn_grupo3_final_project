@@ -13,6 +13,8 @@ CREATE TABLE IF NOT EXISTS tickethn_internal.purchase_emails (
     failed_at timestamptz
 );
 
+ALTER TABLE tickethn_internal.purchase_emails ENABLE ROW LEVEL SECURITY;
+
 CREATE INDEX IF NOT EXISTS purchase_emails_ready
     ON tickethn_internal.purchase_emails (available_at, order_id)
     WHERE sent_at IS NULL AND failed_at IS NULL;
