@@ -70,14 +70,18 @@ func run(logger *slog.Logger) error {
 	tokens := security.NewJWT(authConfig.JWTSecret, authConfig.Issuer, authConfig.AccessTTL)
 	resend := email.NewResend(authConfig.ResendKey, authConfig.EmailFrom)
 	mailer := email.NewQueue(ctx, resend, logger)
-	service := auth.New(database.NewAuthRepository(pool), passwords, tokens, mailer, logger, codeKey,
+	authRepo := database.NewAuthRepository(pool)
+	service := auth.New(authRepo, passwords, tokens, mailer, logger, codeKey,
 		authConfig.AccessTTL, authConfig.RefreshTTL)
 	requireJWT := middleware.RequireJWT(service, logger)
-	router.Auth(routes, handlers.NewAuth(service, logger), requireJWT)
+	var avatars auth.AvatarStore
 	var covers events.CoverStore
 	if eventConfig.StorageURL != "" {
+		avatars = storage.NewAvatars(eventConfig.StorageURL, "tickethn-profile-avatars", eventConfig.StorageKey)
 		covers = storage.NewCovers(eventConfig.StorageURL, eventConfig.StorageBucket, eventConfig.StorageKey)
 	}
+	avatarService := auth.NewAvatarService(authRepo, avatars, logger)
+	router.Auth(routes, handlers.NewAuth(service, avatarService, logger), requireJWT)
 	var qr events.QRSigner
 	if len(eventConfig.QRKey) > 0 {
 		qr = security.NewTicketQR(eventConfig.QRKey)

@@ -22,12 +22,13 @@ import (
 
 type Auth struct {
 	service *auth.Service
+	avatars *auth.AvatarService
 	logger  *slog.Logger
 	limits  authLimiter
 }
 
-func NewAuth(service *auth.Service, logger *slog.Logger) *Auth {
-	return &Auth{service: service, logger: logger, limits: authLimiter{counters: make(map[string]counter)}}
+func NewAuth(service *auth.Service, avatars *auth.AvatarService, logger *slog.Logger) *Auth {
+	return &Auth{service: service, avatars: avatars, logger: logger, limits: authLimiter{counters: make(map[string]counter)}}
 }
 
 type registerInput struct {

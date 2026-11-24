@@ -37,6 +37,8 @@ func Auth(routes chi.Router, h *handlers.Auth, requireJWT func(http.Handler) htt
 			protected.Use(requireJWT)
 			protected.Post("/logout", h.Logout)
 			protected.Get("/me", h.Me)
+			protected.Get("/me/avatar", h.ReadAvatar)
+			protected.Put("/me/avatar", h.ReplaceAvatar)
 			protected.Get("/sessions", h.Sessions)
 			protected.Delete("/sessions/{id}", h.RevokeSession)
 		})

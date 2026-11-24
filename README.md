@@ -224,6 +224,15 @@ Las rutas requieren `Authorization: Bearer <access_token>` de un usuario activo,
 
 `id` es el UUID del usuario y `role` acepta `COMPRADOR`, `ORGANIZADOR`, `VALIDADOR` o `ADMIN`. Si aún no hay una cuenta con `ADMIN`, la primera asignación se hace en la tabla `public.user_roles` de Supabase, vinculando el ID de una cuenta activa y verificada con el ID del rol `ADMIN` de `public.roles`.
 
+## Fotos de perfil
+
+Ejecuta la [migración de fotos de perfil](internal/infrastructure/database/migrations/002_user_avatar.sql) en el SQL Editor de Supabase. En **Storage**, crea el bucket privado `tickethn-profile-avatars`, con un límite de **5 MiB (5 242 880 bytes)** y los tipos `image/jpeg`, `image/png` e `image/webp`. La API accede a ese bucket con `SUPABASE_URL` y `SUPABASE_SERVICE_ROLE_KEY`.
+
+- `PUT /api/auth/me/avatar` recibe únicamente los bytes de la imagen con el `Content-Type` correspondiente y devuelve `204` tras guardar la foto.
+- `GET /api/auth/me/avatar` devuelve la imagen o `204` si la cuenta todavía no tiene foto.
+
+Ambas rutas requieren el token de la cuenta. PostgreSQL guarda la URL privada en `public.users.avatar_url`.
+
 ## Seguridad y sesiones
 
 - Las contraseñas nuevas requieren al menos 12 caracteres y un máximo de 72 bytes UTF-8. Los códigos de seis dígitos vencen en 10 minutos y solo se pueden consumir una vez.

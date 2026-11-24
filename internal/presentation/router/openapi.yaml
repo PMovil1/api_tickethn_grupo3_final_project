@@ -171,6 +171,49 @@ paths:
         '401': {$ref: '#/components/responses/Unauthorized'}
         '500': {$ref: '#/components/responses/Internal'}
         '503': {$ref: '#/components/responses/Unavailable'}
+  /api/auth/me/avatar:
+    get:
+      operationId: readAvatar
+      tags: [Autenticación]
+      summary: Descargar la foto del usuario autenticado
+      security: [{BearerAuth: []}]
+      responses:
+        '200':
+          description: Foto del usuario
+          content:
+            image/jpeg:
+              schema: {type: string, format: binary}
+            image/png:
+              schema: {type: string, format: binary}
+            image/webp:
+              schema: {type: string, format: binary}
+        '204': {description: El usuario todavía no tiene foto}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '500': {$ref: '#/components/responses/Internal'}
+        '503': {$ref: '#/components/responses/Unavailable'}
+    put:
+      operationId: replaceAvatar
+      tags: [Autenticación]
+      summary: Agregar o reemplazar la foto del usuario autenticado
+      description: Envía solo los bytes de la imagen, con un límite de 5 MiB, 4 096 píxeles por lado y 12 millones de píxeles en total.
+      security: [{BearerAuth: []}]
+      requestBody:
+        required: true
+        content:
+          image/jpeg:
+            schema: {type: string, format: binary}
+          image/png:
+            schema: {type: string, format: binary}
+          image/webp:
+            schema: {type: string, format: binary}
+      responses:
+        '204': {description: Foto actualizada}
+        '400': {description: Foto inválida}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '413': {description: La foto supera el límite de tamaño}
+        '415': {description: Tipo de imagen no admitido}
+        '500': {$ref: '#/components/responses/Internal'}
+        '503': {$ref: '#/components/responses/Unavailable'}
   /api/auth/sessions:
     get:
       operationId: sessions

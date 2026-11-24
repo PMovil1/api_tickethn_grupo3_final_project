@@ -52,7 +52,7 @@ func TestAdminUserRoutes(t *testing.T) {
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	repo := &adminUserRepo{}
 	routes := chi.NewRouter()
-	Auth(routes, handlers.NewAuth(auth.New(repo, nil, nil, nil, logger, nil, 0, 0), logger), middleware.RequireJWT(adminIdentity{}, logger))
+	Auth(routes, handlers.NewAuth(auth.New(repo, nil, nil, nil, logger, nil, 0, 0), nil, logger), middleware.RequireJWT(adminIdentity{}, logger))
 
 	request := func(method, path, token string, want int) *httptest.ResponseRecorder {
 		t.Helper()

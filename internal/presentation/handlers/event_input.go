@@ -246,22 +246,31 @@ func (in *eventInput) setPart(name, value string) error {
 }
 
 func validateCover(data []byte) (*events.Cover, error) {
-	cfg, format, err := image.DecodeConfig(bytes.NewReader(data))
-	if err != nil || cfg.Width < 1 || cfg.Height < 1 || cfg.Width > 4096 ||
-		cfg.Height > 4096 || cfg.Width*cfg.Height > 12000000 {
+	format := validatedImageFormat(data)
+	if format == "" {
 		return nil, errCoverFormat
 	}
 	extension := format
-	switch format {
-	case "jpeg":
+	if format == "jpeg" {
 		extension = "jpg"
-	case "png", "webp":
+	}
+	return &events.Cover{Bytes: data, Extension: extension, MediaType: "image/" + format}, nil
+}
+
+func validatedImageFormat(data []byte) string {
+	cfg, format, err := image.DecodeConfig(bytes.NewReader(data))
+	if err != nil || cfg.Width < 1 || cfg.Height < 1 || cfg.Width > 4096 ||
+		cfg.Height > 4096 || cfg.Width*cfg.Height > 12000000 {
+		return ""
+	}
+	switch format {
+	case "jpeg", "png", "webp":
 	default:
-		return nil, errCoverFormat
+		return ""
 	}
 	img, decodedFormat, err := image.Decode(bytes.NewReader(data))
 	if err != nil || decodedFormat != format || img.Bounds().Dx() != cfg.Width || img.Bounds().Dy() != cfg.Height {
-		return nil, errCoverFormat
+		return ""
 	}
-	return &events.Cover{Bytes: data, Extension: extension, MediaType: "image/" + format}, nil
+	return format
 }

@@ -16,6 +16,10 @@ import (
 )
 
 type Covers struct {
+	*objects
+}
+
+type objects struct {
 	base   string
 	bucket string
 	key    string
@@ -23,7 +27,11 @@ type Covers struct {
 }
 
 func NewCovers(projectURL, bucket, key string) *Covers {
-	return &Covers{base: projectURL + "/storage/v1/object/", bucket: bucket, key: key,
+	return &Covers{newObjects(projectURL, bucket, key)}
+}
+
+func newObjects(projectURL, bucket, key string) *objects {
+	return &objects{base: projectURL + "/storage/v1/object/", bucket: bucket, key: key,
 		client: &http.Client{Timeout: 5 * time.Second, CheckRedirect: func(*http.Request, []*http.Request) error {
 			return http.ErrUseLastResponse
 		}}}
@@ -49,7 +57,11 @@ func (s *Covers) Delete(ctx context.Context, publicURL string) error {
 		asset.Path == "." || asset.Path == ".." || strings.HasPrefix(asset.Path, "../") {
 		return fmt.Errorf("invalid path in existing cover URL")
 	}
-	body, err := json.Marshal(map[string][]string{"prefixes": {asset.Path}})
+	return s.delete(ctx, asset.Path)
+}
+
+func (s *objects) delete(ctx context.Context, object string) error {
+	body, err := json.Marshal(map[string][]string{"prefixes": {object}})
 	if err != nil {
 		return err
 	}
@@ -58,24 +70,34 @@ func (s *Covers) Delete(ctx context.Context, publicURL string) error {
 
 func (s *Covers) publicPrefix() string { return s.base + "public/" + s.bucket + "/" }
 
-func (s *Covers) request(ctx context.Context, method, path, mediaType string, body io.Reader) error {
+func (s *objects) request(ctx context.Context, method, path, mediaType string, body io.Reader) error {
+	res, err := s.open(ctx, method, path, mediaType, body)
+	if err == nil {
+		res.Body.Close()
+	}
+	return err
+}
+
+func (s *objects) open(ctx context.Context, method, path, mediaType string, body io.Reader) (*http.Response, error) {
 	req, err := http.NewRequestWithContext(ctx, method, s.base+path, body)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	req.Header.Set("apikey", s.key)
 	req.Header.Set("Authorization", "Bearer "+s.key)
-	req.Header.Set("Content-Type", mediaType)
+	if mediaType != "" {
+		req.Header.Set("Content-Type", mediaType)
+	}
 	if method == http.MethodPost {
 		req.Header.Set("x-upsert", "false")
 	}
 	res, err := s.client.Do(req)
 	if err != nil {
-		return err
+		return nil, err
 	}
-	defer res.Body.Close()
 	if res.StatusCode < 200 || res.StatusCode >= 300 {
-		return fmt.Errorf("storage returned HTTP %d", res.StatusCode)
+		res.Body.Close()
+		return nil, fmt.Errorf("storage returned HTTP %d", res.StatusCode)
 	}
-	return nil
+	return res, nil
 }
